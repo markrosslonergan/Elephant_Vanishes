@@ -20,6 +20,16 @@
 using namespace PROfit;
 log_level_t GLOBAL_LEVEL = LOG_DEBUG;
 
+const std::vector<double> linspace(double start, double end, int num_points) {
+    std::vector<double> result(num_points);
+    double delta = (end - start) / (num_points - 1);
+    std::iota(result.begin(), result.end(), start);
+    for (int i = 1; i < num_points; i++) {
+        result[i] = start + i * delta;
+    }
+    return result;
+}
+
 std::vector<std::pair<double, int>> fill_rand(int numVals, int numSC, double low, double high) {
     std::random_device dev;
     std::mt19937 rng(dev());
@@ -33,7 +43,7 @@ std::vector<std::pair<double, int>> fill_rand(int numVals, int numSC, double low
     return ret;
 }
 
-int FindLocalBin(double reco_value, const std::vector<double>& bins, const std::vector<double>::const_iterator& bins_begin, const std::vector<double>::const_iterator& bins_end){
+int FindLocalBin(double reco_value, std::vector<double>& bins, const std::vector<double>::const_iterator& bins_begin, const std::vector<double>::const_iterator& bins_end){
 
     auto it = std::lower_bound(bins_begin, bins_end, reco_value);
     if (it == bins_end) {
@@ -115,145 +125,151 @@ int main(int argc, char* argv[])
 
 
 
-    const std::vector<double> bin_edges  = {0,0.4,0.8,1,2,2.2,2.5,2.9,3,5,7.7,9,10};
-    int num_sc = 20;
-    int n=5000000;
-
+    int num_sc = 10;
+    std::vector<int> nn={10000000}; //, 3000000, 10000000, 30000000, 100000000};
+    std::vector<int> nb={10, 30, 100, 300, 1000};
     TRandom3 *r = new TRandom3(3);
-    std::vector<double> ran;
-    std::vector<int> rani;
-    for(int i=0; i<n; i++){
-        ran.push_back(r->Uniform(10));
-        rani.push_back(r->Integer(num_sc));
-    }
 
+    for (int n : nn){
+        for (int nnb: nb){
+            std::vector<double> bin_edges  = linspace(0,10, nnb);
 
+            std::cout<<"Using "<<nnb<<" bins and "<<n<<" events"<<std::endl;
+            std::vector<double> ran;
+            std::vector<int> rani;
 
-
-    if(which==0){
-        std::cout<<" Jacob vector"<<std::endl;
-        auto start0 = std::chrono::high_resolution_clock::now();
-        ///////////////////////////////////////////////////
-        std::vector<double> hists(num_sc * (bin_edges.size()-1), 0);
-        /////////////////////////////////////////////////
-        auto end00 = std::chrono::high_resolution_clock::now();
-        auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(end00 - start0);
-        std::cout << "Time taken by setup: " << duration0.count() << " microseconds per fill" << std::endl;
-        auto start = std::chrono::high_resolution_clock::now();
-        ////////////////////////////////////////////////
-        for(int j=0; j<n; j++){
-            if(ran[j] < bin_edges[0]) continue;
-            for(int i = 1; i < bin_edges.size(); ++i) {
-                if(bin_edges[i] > ran[j]) {
-                    hists[(bin_edges.size() - 1) * rani[j] + i-1] += 1;
-                    break;
-                }
+            for(int i=0; i<n; i++){
+                ran.push_back(r->Uniform(10));
+                rani.push_back(r->Integer(num_sc));
             }
-        } 
-        ///////////////////////////////////////////////
-        auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-        std::cout << "Time taken by function: " << duration.count()/(double)n << " nanoseconds per fill" << std::endl;
 
-    }
+            if(which==0){
+                std::cout<<" Jacob vector"<<std::endl;
+                auto start0 = std::chrono::high_resolution_clock::now();
+                ///////////////////////////////////////////////////
+                std::vector<double> hists(num_sc * (bin_edges.size()-1), 0);
+                /////////////////////////////////////////////////
+                auto end00 = std::chrono::high_resolution_clock::now();
+                auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(end00 - start0);
+                std::cout << "Time taken by setup: " << duration0.count() << " microseconds per fill" << std::endl;
+                auto start = std::chrono::high_resolution_clock::now();
+                ////////////////////////////////////////////////
+                for(int j=0; j<n; j++){
+                    if(ran[j] < bin_edges[0]) continue;
+                    for(int i = 1; i < bin_edges.size(); ++i) {
+                        if(bin_edges[i] > ran[j]) {
+                            hists[(bin_edges.size() - 1) * rani[j] + i-1] += 1;
+                            break;
+                        }
+                    }
+                } 
+                ///////////////////////////////////////////////
+                auto stop = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+                std::cout << "Time taken by function: " << duration.count()/(double)n << " nanoseconds per fill" << std::endl;
 
-
-
-
-    if(which==1){
-        std::cout<<" BASIC ROOT "<<std::endl;
-        auto start0 = std::chrono::high_resolution_clock::now();
-        ///////////////////////////////////////////////////
-        std::vector<TH1D*> hists;
-        for(int i=0; i< num_sc; i++){
-            TH1D *h = new TH1D(std::to_string(i).c_str(),std::to_string(i).c_str(),bin_edges.size()-1,&bin_edges[0]);
-            hists.push_back(h);
-        }
-        /////////////////////////////////////////////////
-        auto end00 = std::chrono::high_resolution_clock::now();
-        auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(end00 - start0);
-        std::cout << "Time taken by setup: " << duration0.count() << " microseconds per fill" << std::endl;
-        auto start = std::chrono::high_resolution_clock::now();
-        ////////////////////////////////////////////////
-        for(int i=0; i< n; i++){
-            hists[rani[i]]->Fill(ran[i]);
-        }
-        ///////////////////////////////////////////////
-        auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-        std::cout << "Time taken by function: " << duration.count()/(double)n << " nanoseconds per fill" << std::endl;
-    }
+            }
 
 
 
-    if(which==2){
-        std::cout<<" Mark Eigen"<<std::endl;
+
+            if(which==1){
+                std::cout<<" BASIC ROOT "<<std::endl;
+                auto start0 = std::chrono::high_resolution_clock::now();
+                ///////////////////////////////////////////////////
+                std::vector<TH1D*> hists;
+                for(int i=0; i< num_sc; i++){
+                    TH1D *h = new TH1D(std::to_string(i).c_str(),std::to_string(i).c_str(),bin_edges.size()-1,&bin_edges[0]);
+                    hists.push_back(h);
+                }
+                /////////////////////////////////////////////////
+                auto end00 = std::chrono::high_resolution_clock::now();
+                auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(end00 - start0);
+                std::cout << "Time taken by setup: " << duration0.count() << " microseconds per fill" << std::endl;
+                auto start = std::chrono::high_resolution_clock::now();
+                ////////////////////////////////////////////////
+                for(int i=0; i< n; i++){
+                    hists[rani[i]]->Fill(ran[i]);
+                }
+                ///////////////////////////////////////////////
+                auto stop = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+                std::cout << "Time taken by function: " << duration.count()/(double)n << " nanoseconds per fill" << std::endl;
+            }
+
+
+
+            if(which==2){
+                std::cout<<" Mark Eigen"<<std::endl;
         
-        auto start0 = std::chrono::high_resolution_clock::now();
-        ///////////////////////////////////////////////////
-        Eigen::VectorXd hists = Eigen::VectorXd::Zero(num_sc * (bin_edges.size()));
-        std::vector<int> startp;
-        auto bins_begin = bin_edges.begin();
-        auto bins_end = bin_edges.end();
+                auto start0 = std::chrono::high_resolution_clock::now();
+                ///////////////////////////////////////////////////
+                Eigen::VectorXd hists = Eigen::VectorXd::Zero(num_sc * (bin_edges.size()));
+                std::vector<int> startp;
+                auto bins_begin = bin_edges.begin();
+                auto bins_end = bin_edges.end();
 
-        for(int k=0; k<num_sc; k++){
-            startp.push_back((k==0 ? 0 : startp.back())+bin_edges.size()-1);
-        }
-        /////////////////////////////////////////////////
-        auto end00 = std::chrono::high_resolution_clock::now();
-        auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(end00 - start0);
-        std::cout << "Time taken by setup: " << duration0.count() << " microseconds per fill" << std::endl;
-        auto start = std::chrono::high_resolution_clock::now();
-        ////////////////////////////////////////////////
-        for(int j=0; j<n; j++){
-            hists[startp[rani[j]]+FindLocalBin(ran[j],bin_edges,bins_begin,bins_end)]+=1;
-        } 
-        ///////////////////////////////////////////////
-        auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-        std::cout << "Time taken by function: " << duration.count()/(double)n << " nanoseconds per fill" << std::endl;
+                for(int k=0; k<num_sc; k++){
+                    startp.push_back((k==0 ? 0 : startp.back())+bin_edges.size()-1);
+                }
+                /////////////////////////////////////////////////
+                auto end00 = std::chrono::high_resolution_clock::now();
+                auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(end00 - start0);
+                std::cout << "Time taken by setup: " << duration0.count() << " microseconds per fill" << std::endl;
+                auto start = std::chrono::high_resolution_clock::now();
+                ////////////////////////////////////////////////
+                for(int j=0; j<n; j++){
+                    hists[startp[rani[j]]+FindLocalBin(ran[j],bin_edges,bins_begin,bins_end)]+=1;
+                } 
+                ///////////////////////////////////////////////
+                auto stop = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+                std::cout << "Time taken by function: " << duration.count()/(double)n << " nanoseconds per fill" << std::endl;
 
-    }
-
-
-
-
-    if(which==3){
-        std::cout<<" Ibrahim Chat"<<std::endl;
-        auto start0 = std::chrono::high_resolution_clock::now();
-        ///////////////////////////////////////////////////
-        auto bins_begin = bin_edges.begin();
-        auto bins_end = bin_edges.end();
-        std::vector<double> hists(num_sc * (bin_edges.size()), 0);
-        std::vector<int> startp;
-        for(int k=0; k<num_sc; k++){
-            startp.push_back((k==0 ? 0 : startp.back())+bin_edges.size()-1);
-        }
-
-        /////////////////////////////////////////////////
-        auto end00 = std::chrono::high_resolution_clock::now();
-        auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(end00 - start0);
-        std::cout << "Time taken by setup: " << duration0.count() << " microseconds per fill" << std::endl;
-        auto start = std::chrono::high_resolution_clock::now();
-        ////////////////////////////////////////////////
-        for(int j=0; j<n; j++){
-            hists[startp[rani[j]]+FindLocalBin(ran[j],bin_edges,bins_begin,bins_end)]+=1;
-        } 
-        ///////////////////////////////////////////////
-        auto stop = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-        std::cout << "Time taken by function: " << duration.count()/(double)n << " nanoseconds per fill" << std::endl;
-
-    }
+            }
 
 
 
 
+            if(which==3){
+                std::cout<<" Ibrahim Chat"<<std::endl;
+
+                auto start0 = std::chrono::high_resolution_clock::now();
+                ///////////////////////////////////////////////////
+                auto bins_begin = bin_edges.begin();
+                auto bins_end = bin_edges.end();
+                std::vector<double> hists(num_sc * (bin_edges.size()), 0);
+                std::vector<int> startp;
+                for(int k=0; k<num_sc; k++){
+                    startp.push_back((k==0 ? 0 : startp.back())+bin_edges.size()-1);
+                }
+
+                /////////////////////////////////////////////////
+                auto end00 = std::chrono::high_resolution_clock::now();
+                auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(end00 - start0);
+                std::cout << "Time taken by setup: " << duration0.count() << " microseconds per fill" << std::endl;
+                auto start = std::chrono::high_resolution_clock::now();
+
+                ////////////////////////////////////////////////
+                for(int j=0; j<n; j++){
+                    hists[startp[rani[j]]+FindLocalBin(ran[j],bin_edges,bins_begin,bins_end)]+=1;
+                } 
+
+                ///////////////////////////////////////////////
+                auto stop = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+                std::cout << "Time taken by function: " << duration.count()/(double)n << " nanoseconds per fill" << std::endl;
+
+            }
 
 
 
 
-    std::cout<<"PROfit"<<__LINE__<<std::endl;
+
+
+
+
+            std::cout<<"PROfit"<<__LINE__<<std::endl;
 
 
 
@@ -283,6 +299,8 @@ int main(int argc, char* argv[])
     std::cout << "x = \n" << x.transpose() << std::endl;
     std::cout << "f(x) = " << fx << std::endl;
     */
+        }
+    }
     return 0;
 }
 
