@@ -9,29 +9,27 @@ project (
 
 include(FetchContent)
 include(ExternalProject)
+enable_language(C)
 
 option(MPI_ENABLE "MPI_ENABLE" OFF)
 message("MPI_ENABLE IS SET TO ${MPI_ENABLE}")
 
-
 set(CMAKE_CXX_FLAGS "-g -O3 -Wall -Wextra")
-
-
 
 #Allow for nice support folders in IDEs like VScode
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+find_package(GSL REQUIRED)
 
-find_package(Doxygen)
-if(Doxygen_FOUND)
-    add_subdirectory(docs)
-else()
-    message(STATUS "Doxygen not found, not building docs")
-endif()
+##### Some Dependencies ######
 
-
-
-##### Some Dependancies ######
+FetchContent_Declare(
+  hdf5
+  GIT_REPOSITORY https://github.com/HDFGroup/hdf5.git
+  GIT_TAG        hdf5-1_14_0
+  CMAKE_ARGS "-DBUILD_DOCS:BOOL=OFF"
+)
+FetchContent_MakeAvailable(hdf5)
 
 FetchContent_Declare(
     eigen
@@ -54,15 +52,12 @@ FetchContent_Declare(
     )
 FetchContent_MakeAvailable(tinyxml2)
 
-#./configure --prefix=$MPICH_DIR/mpich-install --disable-f08 --disable-collalgo-tests
-#ExternalProject_Add(mpich
-#    DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}
-#    URL https://www.mpich.org/static/downloads/4.0.3/mpich-4.0.3.tar.gz
-#    UPDATE_COMMAND ""
-#    BUILD_IN_SOURCE 1
-#    CONFIGURE_COMMAND ./configure  --disable-f08 --disable-collalgo-tests
-#    INSTALL_COMMAND ""
-#    )
+FetchContent_Declare(
+    SQUIDS    
+    GIT_REPOSITORY https://github.com/jsalvado/SQuIDS/
+    GIT_TAG        v1.3.0
+    )
+FetchContent_MakeAvailable(SQUIDS)
 
 if(MPI_ENABLE)
     ExternalProject_Add(mfa
@@ -97,7 +92,6 @@ if(MPI_ENABLE)
 
 endif(MPI_ENABLE)
 
-
 #This works, but only runs at make not cmake ..
 #set_property(DIRECTORY PROPERTY EP_UPDATE_DISCONNECTED true)
 #ExternalProject_Add(
@@ -112,11 +106,11 @@ endif(MPI_ENABLE)
 #    GIT_SHALLOW ON
 #)
 
-#this is a bit mesier but works
+#find_package(hdf5 REQUIRED COMPONENTS CXX C)
+
+#this is a bit messier but works
 execute_process(COMMAND git clone -b v09_20_05 https://github.com/SBNSoftware/sbnanaobj.git ${CMAKE_BINARY_DIR}/_deps/sbnanaobj-src )
 set(SBNANAOBJ_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/sbnanaobj-src/")
-
-
 
 find_package(Boost REQUIRED)
 if(Boost_FOUND)
@@ -152,8 +146,6 @@ add_library(PROfit_dict ${CMAKE_BINARY_DIR}/PROfit_dict.cxx)
 target_include_directories(PROfit_dict PRIVATE ${SBNANAOBJ_INCLUDE_DIR})
 target_link_directories(PROfit_dict PRIVATE ${CMAKE_BINARY_DIR})
 target_link_libraries(PROfit_dict PRIVATE ${ROOT_LIBRARIES})
-
-
 
 # The compiled library code lives inside here
 add_subdirectory(src)
