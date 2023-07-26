@@ -146,7 +146,7 @@ struct Block : public BlockBase<T>
     //template <typename V>               // type of science value being read
     void read_3d_data(
             const       diy::Master::ProxyWithLink& cp,
-            //MFAInfo&    mfa_info,
+            MFAInfo&    mfa_info,
             DomainArgs& args,
             Eigen::Tensor<double, 4> vals,
             bool  rescale)            // rescale science values
@@ -154,8 +154,8 @@ struct Block : public BlockBase<T>
         //std::cout << "$$$$ dom_dim: " << a->dom_dim << std::endl; 
         DomainArgs* a = &args;
 
-        const int nvars       = 0;//mfa_info.nvars();
-        const VectorXi mdims  = 0;//mfa_info.model_dims();
+        const int nvars       = mfa_info.nvars();
+        const VectorXi mdims  = mfa_info.model_dims();
 
         // Resize the vectors that record error metrics
         this->max_errs.resize(nvars);
@@ -167,14 +167,14 @@ struct Block : public BlockBase<T>
             ndom_pts(i)     =  a->ndom_pts[i];
 
         // Create input data set and add to block
-        //std::cout << "dom_dim, mdims, ndom_pts.prod(), ndom_pts: " << dom_dim << ", " << mdims << ", " << ndom_pts.prod() << ", " << ndom_pts << std::endl;
+        std::cout << "dom_dim, mdims, ndom_pts.prod(), ndom_pts: " << dom_dim << ", " << mdims << ", " << ndom_pts.prod() << ", " << ndom_pts << std::endl;
         input = new mfa::PointSet<T>(dom_dim, mdims, ndom_pts.prod(), ndom_pts);
         assert(vals(0) == ndom_pts(0));
         assert(vals(1) == ndom_pts(1));
         assert(vals(2) == ndom_pts(2));
         // set geometry values
         int n = 0;
-        int pd = 0;//mfa_info.pt_dim();
+        int pd = mfa_info.pt_dim();
         for (size_t k = 0; k < (size_t)(ndom_pts(2)); k++) {
             for (size_t j = 0; j < (size_t)(ndom_pts(1)); j++) {
                 for (size_t i = 0; i < (size_t)(ndom_pts(0)); i++) {
@@ -193,11 +193,12 @@ struct Block : public BlockBase<T>
         }
 
         // Init params from input data (must fill input->domain first)
+        std::cout<<"Starting to init_params"<<std::endl;
         input->init_params();   
 
         // Construct the MFA object
-        //this->setup_MFA(cp, mfa_info);
-
+        std::cout<<"Starting to construct_MFA"<<std::endl;
+        this->setup_MFA(cp, mfa_info);
 
         // find extent of masses, values, and science variables (bins)
         // NOTE: the difference between core_mins/maxs and bounds_mins/maxs only matters
@@ -219,10 +220,105 @@ struct Block : public BlockBase<T>
 
 };
 
+
+inline void makeSignalModel(diy::mpi::communicator world, Block<Real_t>* b, const diy::Master::ProxyWithLink& cp, int nbins, int mfadim, std::vector<int> nctrl_pts, int deg)
+{
+    // default command line arguments
+    int    dom_dim      = mfadim;                    // dimension of domain (<= pt_dim)
+    int    pt_dim       = nbins+dom_dim;        // dimension of input points
+    Real_t noise        = 0.0;                  // fraction of noise
+
+    vector<int> v_degrees(dom_dim, deg);
+    vector<int> v_nctrls = nctrl_pts;
+
+    // Info classes for construction of MFA
+    ModelInfo geom_info(dom_dim);
+    ModelInfo var_info(dom_dim, pt_dim - dom_dim, v_degrees, v_nctrls);
+    MFAInfo   mfa_info(dom_dim, 1, geom_info, var_info);
+    mfa_info.weighted = 0;
+    
+    // set input domain arguments
+    DomainArgs d_args(dom_dim, pt_dim);
+    d_args.n            = noise;
+    d_args.min = {0, 0, 0};
+    d_args.max = {v_nctrls[0] - 1, v_nctrls[1] - 1, v_nctrls[2] - 1};
+
+    for (int i = 0; i < d_args.ndom_pts.size(); i++)
+            d_args.ndom_pts[i] = v_nctrls[i];   
+
+    Eigen::VectorXd vec_gridx(v_nctrls[0]);
+    Eigen::VectorXd vec_gridy(v_nctrls[1]);
+    Eigen::VectorXd vec_gridz(v_nctrls[2]);
+
+    //tmp
+    int signalgridsize = 10;
+    int mass = v_nctrls[0];
+    int dim2 = v_nctrls[1];
+    int dim3 = v_nctrls[2];
+
+    Eigen::Tensor<double, 4> map_bin_to_grid(nbins,mass,dim2,dim3);
+    Eigen::ArrayXXd values(signalgridsize,nbins);	
+
+    int gridx = -1;
+    int gridy = -1;
+    int gridz = -1;
+
+
+    double t0 = MPI_Wtime();
+    for (size_t i=0; i<signalgridsize; ++i) {
+        double t_a = MPI_Wtime();
+        values.row(i) = 10; //signal.predict3D(world, cp, i, false, gridx, gridy, gridz);
+        double t_b = MPI_Wtime();
+        int gridz_index = i / (dim2 * mass);
+        int gridy_index = (i / mass) % dim2;
+        int gridx_index = i % mass;
+
+        //std::cout << "x, y, z: " << gridx_index << ", " << gridy_index << ", " << gridz_index << std::endl;
+        vec_gridz(gridz_index) = gridz;
+        vec_gridy(gridy_index) = gridy;
+        vec_gridx(gridx_index) = gridx;
+
+        double t_c = MPI_Wtime();
+        for( int bin=0; bin < nbins; bin++ ) map_bin_to_grid(bin,gridx_index,gridy_index,gridz_index) = values(i,bin); 
+        double t_d = MPI_Wtime();
+    }
+    double t1 = MPI_Wtime();
+    std::cout << "time to create the tensor: " << t1-t0 << std::endl;
+    std::cout << "read 3d data" << std::endl;
+    double t2 = MPI_Wtime();
+    b->read_3d_data(cp, mfa_info, d_args, map_bin_to_grid, false);
+    double t3 = MPI_Wtime();
+    std::cout << "took: " << t3-t1 << " seconds" << std::endl;
+    std::cout << "fixed encode block" << std::endl;
+    double t4 = MPI_Wtime();
+    b->fixed_encode_block(cp, mfa_info);
+    double t5 = MPI_Wtime();
+    std::cout << "took: " << t5-t4 << " seconds" << std::endl;
+    std::cout << "range error" << std::endl;
+    double t6 = MPI_Wtime();
+    b->range_error(cp, 0, true, true);
+    double t7 = MPI_Wtime();
+    std::cout << "took: " << t7-t6 << " seconds" << std::endl;
+    std::cout << "print block" << std::endl;
+    double t8 = MPI_Wtime();
+    b->print_block(cp, 0);
+    double t9 = MPI_Wtime();
+    std::cout << "took: " << t9-t8 << " seconds" << std::endl;
+    std::cout << "done with makeSignalModel" << std::endl;
+
+}
+
+
+
+
+
+
+
+
 int main(int argc, char* argv[])
 {
 
-    CLI::App app{"Test for PROfit"}; 
+    CLI::App app{"PROfit: EpEm MFA4u"}; 
 
     // Define options
     std::string xmlname = "NULL.xml"; 
@@ -235,7 +331,6 @@ int main(int argc, char* argv[])
 
     CLI11_PARSE(app, argc, argv);
 
-
     diy::mpi::environment env(argc, argv);
     diy::mpi::communicator world;
 
@@ -243,14 +338,22 @@ int main(int argc, char* argv[])
     size_t blocks = world.size();
     if (world.rank()==0) std::cout<<"We have blocks: "<< blocks<<std::endl;
 
-    int mfadim = 5; //Dimension of the MFA model
-    Bounds<float> fc_domain(3);
-    fc_domain.min[0] = 0.;
-    fc_domain.max[0] = blocks-1;
-    fc_domain.min[1] = 0.;
-    fc_domain.max[1] = blocks-1;
-    fc_domain.min[2] = 0.;
-    fc_domain.max[2] = blocks-1;
+    int mfadim = 3; //Dimension of the MFA model
+    int nBins = 1; //Dimension of output of MFA? I believe so
+    int degree = 2;//Science degree? Not sure
+    int mass = 10;//number of mass pts
+    int dim2 = 10;//number of dim2 pts?
+    int dim3 = 1;
+    std::vector<int> ncontrol_pts = {mass,dim2,dim3};
+
+
+
+
+    Bounds<float> fc_domain(mfadim);
+    for(int i=0; i<mfadim; i++){
+        fc_domain.min[i] = 0.;
+        fc_domain.max[i] = blocks-1;
+    }
 
     diy::FileStorage               storage("./DIY.XXXXXX");
     diy::RoundRobinAssigner        fc_assigner(world.size(), blocks);
@@ -260,39 +363,57 @@ int main(int argc, char* argv[])
     diy::Master                    fc_master(world, 1, -1, &Block<float>::create, &Block<float>::destroy, &storage, &Block<float>::save, &Block<float>::load);
     diy::ContiguousAssigner   assigner(world.size(), blocks);
 
+        fc_decomposer.decompose(world.rank(),
+            assigner,
+            [&](int gid, const Bounds<Real_t>& core, const Bounds<Real_t>& bounds, const Bounds<Real_t>& domain, const RCLink<Real_t>& link)
+            { Block<Real_t>::add(gid, core, bounds, domain, link, fc_master, mfadim, nBins+mfadim, 0.0); });
 
 
-    PROconfig myConf(xmlname);
+        double T10 = MPI_Wtime();
+        fc_master.foreach([world,nBins, mfadim, ncontrol_pts, degree](Block<Real_t>* b, const diy::Master::ProxyWithLink& cp){
+                makeSignalModel(world, b, cp,  nBins, mfadim, ncontrol_pts, degree);});
 
-    //PROspec mySpec(myConf);
-    //TH1D hmm = mySpec.toTH1D(myConf);
-
-
-    LBFGSpp::LBFGSBParam<double> param;  
-    param.epsilon = 1e-6;
-    param.max_iterations = 100;
-    LBFGSpp::LBFGSBSolver<double> solver(param); 
-
-    int n=78;
-    ChiTest fun(n);
-
-    // Bounds
-    Eigen::VectorXd lb = Eigen::VectorXd::Constant(n, 0.0);
-    Eigen::VectorXd ub = Eigen::VectorXd::Constant(n, std::numeric_limits<double>::infinity());
-
-    // Initial guess
-    Eigen::VectorXd x = Eigen::VectorXd::Constant(n, 2.0);
+        double T11   = MPI_Wtime();
+        if (world.rank()==0) std::cout << "time to build model: " << T11-T10 << " seconds." << std::endl;
 
 
-    // x will be overwritten to be the best point found
-    double fx;
-    int niter = solver.minimize(fun, x, fx, lb, ub);
 
 
-    std::cout << niter << " iterations" << std::endl;
-    std::cout << "x = \n" << x.transpose() << std::endl;
-    std::cout << "f(x) = " << fx << std::endl;
+        std::cout<<" OK, things are setup. "<<std::endl;
 
-    return 0;
+
+        PROconfig myConf(xmlname);
+
+        //PROspec mySpec(myConf);
+        //TH1D hmm = mySpec.toTH1D(myConf);
+
+        std::cout<<"Minimizer test"<<std::endl;
+
+        LBFGSpp::LBFGSBParam<double> param;  
+        param.epsilon = 1e-6;
+        param.max_iterations = 100;
+        LBFGSpp::LBFGSBSolver<double> solver(param); 
+
+        int n=78;
+        ChiTest fun(n);
+
+        // Bounds
+        Eigen::VectorXd lb = Eigen::VectorXd::Constant(n, 0.0);
+        Eigen::VectorXd ub = Eigen::VectorXd::Constant(n, std::numeric_limits<double>::infinity());
+
+        // Initial guess
+        Eigen::VectorXd x = Eigen::VectorXd::Constant(n, 2.0);
+
+
+        // x will be overwritten to be the best point found
+        double fx;
+        int niter = solver.minimize(fun, x, fx, lb, ub);
+
+
+        std::cout << niter << " iterations" << std::endl;
+        std::cout << "x = \n" << x.transpose() << std::endl;
+        std::cout << "f(x) = " << fx << std::endl;
+
+        return 0;
 }
 
