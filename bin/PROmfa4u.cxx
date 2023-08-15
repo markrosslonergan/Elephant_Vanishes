@@ -3,6 +3,7 @@
 #include "PROcovariancegen.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "CLI11.h"
 #include "LBFGSB.h"
@@ -61,6 +62,12 @@ class MFAvalues
             for (int i = dimensions.size() - 1; i >= 0; --i) {
                 coordinates[i] = (index / product) % dimensions[i];
                 product *= dimensions[i];
+            }
+
+            for(auto &c : coordinates){
+                if( c!=c || !std::isfinite(c)){
+                std::cout<<"BLARG "<<c<<std::endl;
+                }
             }
 
             return coordinates;
@@ -283,6 +290,9 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
     std::fill(d_args.min.begin(), d_args.min.end(), 0);
     for(int i =0; i< dom_dim; i++){
         d_args.max[i] = v_nctrls[i] - 1;
+    }
+   
+    for(int i = 0; i < d_args.ndom_pts.size(); i++){
         d_args.ndom_pts[i] = v_nctrls[i];   
     }
 
@@ -321,9 +331,9 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
     b->fixed_encode_block(cp, mfa_info);
     double t5 = MPI_Wtime();
     std::cout << "took: " << t5-t4 << " seconds" << std::endl;
-    std::cout << "range error" << std::endl;
+    //std::cout << "range error" << std::endl;
     double t6 = MPI_Wtime();
-    b->range_error(cp, 0, true, true);
+    //b->range_error(cp, 0, true, true);
     double t7 = MPI_Wtime();
     std::cout << "took: " << t7-t6 << " seconds" << std::endl;
     std::cout << "print block" << std::endl;
