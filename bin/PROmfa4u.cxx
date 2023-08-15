@@ -69,7 +69,7 @@ class MFAvalues
                 std::cout<<"BLARG "<<c<<std::endl;
                 }
             }
-
+            std::reverse(coordinates.begin(), coordinates.end());
             return coordinates;
         }
 };
