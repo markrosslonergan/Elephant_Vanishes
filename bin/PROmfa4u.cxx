@@ -2,6 +2,8 @@
 #include "PROspec.h"
 #include "PROcovariancegen.h"
 
+#include <algorithm>
+
 #include "CLI11.h"
 #include "LBFGSB.h"
 
@@ -33,6 +35,42 @@
 
 using namespace PROfit;
 log_level_t GLOBAL_LEVEL = LOG_DEBUG;
+
+
+
+class MFAvalues
+{
+
+    public:
+        size_t size;
+        size_t nbins;
+        size_t mfadim;
+        Eigen::ArrayXXd data;
+        std::vector<int> dimensions;
+
+        MFAvalues(int signalgridsize, int inbins, std::vector<int> dims){
+            data.resize(signalgridsize,inbins);	
+            dimensions = dims;
+            size = signalgridsize;
+            nbins = inbins;
+            mfadim = dims.size();
+        }
+
+        std::vector<int> unflatten(int index) {
+            std::vector<int> coordinates(dimensions.size());
+            int product = 1;
+
+            for (int i = dimensions.size() - 1; i >= 0; --i) {
+                coordinates[i] = (index / product) % dimensions[i];
+                product *= dimensions[i];
+            }
+
+            return coordinates;
+        }
+};
+
+
+
 
 class ChiTest
 {
@@ -148,7 +186,7 @@ struct Block : public BlockBase<T>
             const       diy::Master::ProxyWithLink& cp,
             MFAInfo&    mfa_info,
             DomainArgs& args,
-            Eigen::Tensor<double, 4> vals,
+            MFAvalues vals,
             bool  rescale)            // rescale science values
     {
         //std::cout << "$$$$ dom_dim: " << a->dom_dim << std::endl; 
@@ -169,30 +207,33 @@ struct Block : public BlockBase<T>
         // Create input data set and add to block
         std::cout << "dom_dim, mdims, ndom_pts.prod(), ndom_pts: " << dom_dim << ", " << mdims << ", " << ndom_pts.prod() << ", " << ndom_pts << std::endl;
         input = new mfa::PointSet<T>(dom_dim, mdims, ndom_pts.prod(), ndom_pts);
-        std::cout<<" vals(0): \n "<<vals(0)<<" \n ndom_pts(0): \n "<<ndom_pts(0)<<std::endl;
-        std::cout<<vals(1)<<" "<<ndom_pts(1)<<std::endl;
-        std::cout<<vals(2)<<" "<<ndom_pts(2)<<std::endl;
+        //std::cout<<" vals(0): \n "<<vals(0)<<" \n ndom_pts(0): \n "<<ndom_pts(0)<<std::endl;
+        //std::cout<<vals(1)<<" "<<ndom_pts(1)<<std::endl;
+        //std::cout<<vals(2)<<" "<<ndom_pts(2)<<std::endl;
         //assert(vals(0) == ndom_pts(0));
         //assert(vals(1) == ndom_pts(1));
         //assert(vals(2) == ndom_pts(2));
         // set geometry values
         int n = 0;
         int pd = mfa_info.pt_dim();
-        for (size_t k = 0; k < (size_t)(ndom_pts(2)); k++) {
-            for (size_t j = 0; j < (size_t)(ndom_pts(1)); j++) {
-                for (size_t i = 0; i < (size_t)(ndom_pts(0)); i++) {
-                    input->domain(n, 0) = i;
-                    input->domain(n, 1) = j;
-                    input->domain(n, 2) = k;
-                    for (int m = 0; m < pd-dom_dim; m++) {
-                        std::cout << "index n, 3+m, i, j, k, vals: " << n << ", " << 3+m << ", " << i << ", " << j << ", " << k << ", ";
-                        input->domain(n, dom_dim+m) = vals(m, i, j, k);
-                        std::cout << vals(m, i, j, k) << std::endl;
 
-                    }	
-                    n++;
-                }
+
+        for(size_t k = 0; k< vals.size; k++){
+            
+            //For this point, whats the dimensions it correlated to?
+            std::vector<int> unflat_dim = vals.unflatten(n);
+
+            //First dom_dim size points are the grid indicies
+            for(int t =0; t< dom_dim; t++){
+                input->domain(n,t) = unflat_dim.at(t);
             }
+
+            //Next Nbins is the values of the data
+            for(size_t b=0; b<vals.nbins; b++){
+                input->domain(n,dom_dim+b) = vals.data(k,b); 
+            }
+
+            n++;
         }
 
         // Init params from input data (must fill input->domain first)
@@ -242,60 +283,50 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
     ModelInfo var_info(dom_dim, pt_dim - dom_dim, v_degrees, v_nctrls);
     MFAInfo   mfa_info(dom_dim, 1, geom_info, var_info);
     mfa_info.weighted = 0;
-   
-    std::cout<<"Settting DomainArgs"<<std::endl;
+
+    std::cout<<"Settting DomainArgs "<<v_nctrls[0]-1<<" "<<v_nctrls[1]-1<<" "<<v_nctrls[2]-1<<std::endl;
     // set input domain arguments
     DomainArgs d_args(dom_dim, pt_dim);
-    d_args.n            = noise;
-    d_args.min = {0, 0, 0};
-    d_args.max = {v_nctrls[0] - 1, v_nctrls[1] - 1, v_nctrls[2] - 1};
+    d_args.n   = noise;
+    std::fill(d_args.min.begin(), d_args.min.end(), 0);
+    for(int i =0; i< dom_dim; i++){
+        d_args.max[i] = v_nctrls[i] - 1;
+        d_args.ndom_pts[i] = v_nctrls[i];   
+    }
 
-    for (int i = 0; i < d_args.ndom_pts.size(); i++)
-            d_args.ndom_pts[i] = v_nctrls[i];   
-
-    Eigen::VectorXd vec_gridx(v_nctrls[0]);
-    Eigen::VectorXd vec_gridy(v_nctrls[1]);
-    Eigen::VectorXd vec_gridz(v_nctrls[2]);
-
-    //tmp
     int mass = v_nctrls[0];
     int dim2 = v_nctrls[1];
     int dim3 = v_nctrls[2];
-    int signalgridsize = mass*dim2*dim3;
 
-    Eigen::Tensor<double, 4> map_bin_to_grid(nbins,mass,dim2,dim3);
-    Eigen::ArrayXXd values(signalgridsize,nbins);	
+    //How many TOTAL control points
+    int signalgridsize = 1;
+    for(int i =0; i< dom_dim; i++){
+        signalgridsize *= nctrl_pts[i];
+    }
 
-    int gridx = -1;
-    int gridy = -1;
-    int gridz = -1;
+    MFAvalues values(signalgridsize,nbins, v_nctrls);	
 
 
+    std::cout<<"Starting signalgridsize "<<std::endl;
     double t0 = MPI_Wtime();
     for (size_t i=0; i<signalgridsize; ++i) {
         double t_a = MPI_Wtime();
         Eigen::VectorXd res(nbins);
         res.setRandom();
-        values.row(i) = res;//signal.predict3D(world, cp, i, false, gridx, gridy, gridz);
-        double t_b = MPI_Wtime();
-        int gridz_index = i / (dim2 * mass);
-        int gridy_index = (i / mass) % dim2;
-        int gridx_index = i % mass;
+        values.data.row(i) = res;//signal.predict3D(world, cp, i, false, gridx, gridy, gridz);
 
-        //std::cout << "x, y, z: " << gridx_index << ", " << gridy_index << ", " << gridz_index << std::endl;
-        vec_gridz(gridz_index) = gridz;
-        vec_gridy(gridy_index) = gridy;
-        vec_gridx(gridx_index) = gridx;
-
-        double t_c = MPI_Wtime();
-        for( int bin=0; bin < nbins; bin++ ) map_bin_to_grid(bin,gridx_index,gridy_index,gridz_index) = values(i,bin); 
+        //values.grid_indicies[i] =  {i % mass, (i / mass) % dim2, i / (dim2 * mass)};
+        //map_bin_to_grid[bin][gridx_index][gridy_index][gridz_index] = values(i,bin); 
+        //
         double t_d = MPI_Wtime();
     }
+
+
     double t1 = MPI_Wtime();
     std::cout << "time to create the tensor: " << t1-t0 << std::endl;
     std::cout << "read 3d data" << std::endl;
     double t2 = MPI_Wtime();
-    b->read_3d_data(cp, mfa_info, d_args, map_bin_to_grid, false);
+    b->read_3d_data(cp, mfa_info, d_args, values, false);
     double t3 = MPI_Wtime();
     std::cout << "took: " << t3-t1 << " seconds" << std::endl;
     std::cout << "fixed encode block" << std::endl;
@@ -327,6 +358,7 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
 int main(int argc, char* argv[])
 {
 
+
     CLI::App app{"PROfit: EpEm MFA4u"}; 
 
     // Define options
@@ -337,9 +369,10 @@ int main(int argc, char* argv[])
     app.add_option("-x,--xml", xmlname, "Input PROfit XML config.");
     app.add_option("-m,--max", maxevents, "Max number of events to run over.");
     app.add_option("-v,--verbosity", GLOBAL_LEVEL, "Verbosity Level [1-4].");
-
     CLI11_PARSE(app, argc, argv);
 
+
+    //Some DIY MPI setup. 
     diy::mpi::environment env(argc, argv);
     diy::mpi::communicator world;
 
@@ -347,95 +380,95 @@ int main(int argc, char* argv[])
     size_t blocks = world.size();
     if (world.rank()==0) std::cout<<"We have blocks: "<< blocks<<std::endl;
 
-    int mfadim = 3; //Dimension of the MFA model
-    int nBins = 1; //Dimension of output of MFA? I believe so
-    int degree = 2;//Science degree? Not sure
-    int mass = 20;//number of mass pts
-    int dim2 = 20;//number of dim2 pts?
-    int dim3 = 20;
-    std::vector<int> ncontrol_pts = {mass,dim2,dim3};
+    //Some core inputs
+    int mfadim = 3; //Dimension of the MFA model (input)
+    int nBins = 1020; //Dimension of output of MFA? I believe so 
+    int degree = 3;//Science degree? Not sure... polynomial degree?
+    std::vector<int> ncontrol_pts(mfadim); // mfadim each has dim 7 for +/-1,2,3 sigma and CV
+    std::fill(ncontrol_pts.begin(), ncontrol_pts.end(), 7);
 
-    Bounds<double> fc_domain(mfadim);
+    Bounds<double> domain(mfadim);
     for(int i=0; i<mfadim; i++){
-        fc_domain.min[i] = 0.;
-        fc_domain.max[i] = blocks-1;
+        domain.min[i] = 0.;
+        domain.max[i] = blocks-1;
+        std::cout<<i<<" domain "<<domain.min[i]<<" "<<domain.max[i]<<std::endl;
     }
 
-    diy::FileStorage               storage("./DIY.XXXXXX");
-    diy::RoundRobinAssigner        fc_assigner(world.size(), blocks);
-    diy::RegularDecomposer<Bounds<double>> fc_decomposer(mfadim, fc_domain, blocks);
-    diy::RegularBroadcastPartners  fc_comm(    fc_decomposer, mfadim, true);
-    diy::RegularMergePartners      fc_partners(fc_decomposer, mfadim, true);
-    diy::Master                    fc_master(world, 1, -1, &Block<double>::create, &Block<double>::destroy, &storage, &Block<double>::save, &Block<double>::load);
+    diy::FileStorage               diy_storage("./DIY.XXXXXX");
+    diy::RoundRobinAssigner        diy_assigner(world.size(), blocks);
+    diy::RegularDecomposer<Bounds<double>> diy_decomposer(mfadim, domain, blocks);
+    diy::RegularBroadcastPartners  diy_comm(    diy_decomposer, mfadim, true);
+    diy::RegularMergePartners      diy_partners(diy_decomposer, mfadim, true);
+    diy::Master                    diy_master(world, 1, -1, &Block<double>::create, &Block<double>::destroy, &diy_storage, &Block<double>::save, &Block<double>::load);
     diy::ContiguousAssigner   assigner(world.size(), blocks);
 
-        std::cout<<"fc_decomposer.decompose"<<std::endl;
-        fc_decomposer.decompose(world.rank(),
+    //What is a decomposer here eh, I think its assigning blocks to the MPI nodes
+    std::cout<<"diy_decomposer.decompose"<<std::endl;
+    diy_decomposer.decompose(world.rank(),
             assigner,
             [&](int gid, const Bounds<double>& core, const Bounds<double>& bounds, const Bounds<double>& domain, const RCLink<double>& link)
-            { Block<double>::add(gid, core, bounds, domain, link, fc_master, mfadim, nBins+mfadim, 0.0); });
+            { Block<double>::add(gid, core, bounds, domain, link, diy_master, mfadim, nBins+mfadim, 0.0); });
 
 
-        std::cout<<"fc_master.foreach"<<std::endl;
-        double T10 = MPI_Wtime();
-        fc_master.foreach([world,nBins, mfadim, ncontrol_pts, degree](Block<double>* b, const diy::Master::ProxyWithLink& cp){
-                makeSignalModel(world, b, cp,  nBins, mfadim, ncontrol_pts, degree);});
+    // This is whats building the SignalModel
+    std::cout<<"diy_master.foreach"<<std::endl;
+    double T10 = MPI_Wtime();
+    diy_master.foreach([world,nBins, mfadim, ncontrol_pts, degree](Block<double>* b, const diy::Master::ProxyWithLink& cp){
+            makeSignalModel(world, b, cp,  nBins, mfadim, ncontrol_pts, degree);});
 
-        double T11   = MPI_Wtime();
-        if (world.rank()==0) std::cout << "time to build model: " << T11-T10 << " seconds." << std::endl;
-
-
-
-        std::cout<<"Testing"<<std::endl;
- 
+    double T11   = MPI_Wtime();
+    if (world.rank()==0) std::cout << "time to build model: " << T11-T10 << " seconds." << std::endl;
 
 
-        fc_master.foreach([&](Block<double>* b, const diy::Master::ProxyWithLink& cp){
+    //And decoding
+    std::cout<<"Testing Decodin"<<std::endl;
+    diy_master.foreach([&](Block<double>* b, const diy::Master::ProxyWithLink& cp){
             Eigen::VectorXd out_pt(b->pt_dim);
             Eigen::VectorXd in_param(b->dom_dim);
             std::cout<<" Inside: "<<b->pt_dim<<" "<<b->dom_dim<<std::endl;
-            in_param(0) = 0;
-            in_param(1) = 0;
-            in_param(2) = 0;
+            in_param.setConstant(0.45);
+            double t1 = MPI_Wtime();
             b->decode_point(cp, in_param, out_pt);
+            double t0 = MPI_Wtime();
+            std::cout << "time to decode a single point: " << t0-t1 <<" seconds? "<< std::endl;
             std::cout<<"Final Res: \n "<<out_pt<<std::endl;               
-               });
+            });
 
 
-        std::cout<<" OK, things are setup. "<<std::endl;
+    std::cout<<" OK, things are setup. "<<std::endl;
 
-        PROconfig myConf(xmlname);
+    PROconfig myConf(xmlname);
 
-        //PROspec mySpec(myConf);
-        //TH1D hmm = mySpec.toTH1D(myConf);
+    //PROspec mySpec(myConf);
+    //TH1D hmm = mySpec.toTH1D(myConf);
 
-        std::cout<<"Minimizer test"<<std::endl;
+    std::cout<<"Minimizer test"<<std::endl;
 
-        LBFGSpp::LBFGSBParam<double> param;  
-        param.epsilon = 1e-6;
-        param.max_iterations = 100;
-        LBFGSpp::LBFGSBSolver<double> solver(param); 
+    LBFGSpp::LBFGSBParam<double> param;  
+    param.epsilon = 1e-6;
+    param.max_iterations = 100;
+    LBFGSpp::LBFGSBSolver<double> solver(param); 
 
-        int n=78;
-        ChiTest fun(n);
+    int n=78;
+    ChiTest fun(n);
 
-        // Bounds
-        Eigen::VectorXd lb = Eigen::VectorXd::Constant(n, 0.0);
-        Eigen::VectorXd ub = Eigen::VectorXd::Constant(n, std::numeric_limits<double>::infinity());
+    // Bounds
+    Eigen::VectorXd lb = Eigen::VectorXd::Constant(n, 0.0);
+    Eigen::VectorXd ub = Eigen::VectorXd::Constant(n, std::numeric_limits<double>::infinity());
 
-        // Initial guess
-        Eigen::VectorXd x = Eigen::VectorXd::Constant(n, 2.0);
-
-
-        // x will be overwritten to be the best point found
-        double fx;
-        int niter = solver.minimize(fun, x, fx, lb, ub);
+    // Initial guess
+    Eigen::VectorXd x = Eigen::VectorXd::Constant(n, 2.0);
 
 
-        std::cout << niter << " iterations" << std::endl;
-        std::cout << "x = \n" << x.transpose() << std::endl;
-        std::cout << "f(x) = " << fx << std::endl;
+    // x will be overwritten to be the best point found
+    double fx;
+    int niter = solver.minimize(fun, x, fx, lb, ub);
 
-        return 0;
+
+    std::cout << niter << " iterations" << std::endl;
+    std::cout << "x = \n" << x.transpose() << std::endl;
+    std::cout << "f(x) = " << fx << std::endl;
+
+    return 0;
 }
 
