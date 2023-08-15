@@ -232,7 +232,9 @@ struct Block : public BlockBase<T>
             //Next Nbins is the values of the data
             for(size_t b=0; b<vals.nbins; b++){
                 input->domain(k,dom_dim+b) = vals.data(k,b); 
+                std::cout << "index n, 3+m, i, j, k, vals: " << k << ", " << dom_dim+b << ", " << unflat_dim[0] << ", " << unflat_dim[1] << ", " << unflat_dim[2] << ", "<<vals.data(k,b)<<std::endl;
             }
+
         }
 
         // Init params from input data (must fill input->domain first)
@@ -379,8 +381,8 @@ int main(int argc, char* argv[])
 
     //Some core inputs
     int mfadim = 3; //Dimension of the MFA model (input)
-    int nBins = 1020; //Dimension of output of MFA? I believe so 
-    int degree = 3;//Science degree? Not sure... polynomial degree?
+    int nBins = 3; //Dimension of output of MFA? I believe so 
+    int degree = 2;//Science degree? Not sure... polynomial degree?
     std::vector<int> ncontrol_pts(mfadim); // mfadim each has dim 7 for +/-1,2,3 sigma and CV
     std::fill(ncontrol_pts.begin(), ncontrol_pts.end(), 7);
 
@@ -422,7 +424,7 @@ int main(int argc, char* argv[])
     diy_master.foreach([&](Block<double>* b, const diy::Master::ProxyWithLink& cp){
             Eigen::VectorXd out_pt(b->pt_dim);
             Eigen::VectorXd in_param(b->dom_dim);
-            in_param.setConstant(0.25);
+            in_param.setConstant(0.45);
             
             std::cout<<" Inside: "<<b->pt_dim<<" "<<b->dom_dim<<std::endl;
 
