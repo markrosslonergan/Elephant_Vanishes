@@ -44,16 +44,14 @@ class MFAvalues
     public:
         size_t size;
         size_t nbins;
-        size_t mfadim;
-        Eigen::ArrayXXd data;
         std::vector<int> dimensions;
+        
+        Eigen::ArrayXXd data;
+        size_t mfadim;
 
-        MFAvalues(int signalgridsize, int inbins, std::vector<int> dims){
-            data.resize(signalgridsize,inbins);	
-            dimensions = dims;
-            size = signalgridsize;
-            nbins = inbins;
-            mfadim = dims.size();
+        MFAvalues(int signalgridsize, int inbins, std::vector<int> dims) : size(signalgridsize), nbins(inbins), dimensions(dims){
+            data.resize(size,nbins);	
+            mfadim = dimensions.size();
         }
 
         std::vector<int> unflatten(int index) {
@@ -186,7 +184,7 @@ struct Block : public BlockBase<T>
             const       diy::Master::ProxyWithLink& cp,
             MFAInfo&    mfa_info,
             DomainArgs& args,
-            MFAvalues vals,
+            MFAvalues& vals,
             bool  rescale)            // rescale science values
     {
         //std::cout << "$$$$ dom_dim: " << a->dom_dim << std::endl; 
@@ -214,26 +212,20 @@ struct Block : public BlockBase<T>
         //assert(vals(1) == ndom_pts(1));
         //assert(vals(2) == ndom_pts(2));
         // set geometry values
-        int n = 0;
-        int pd = mfa_info.pt_dim();
-
 
         for(size_t k = 0; k< vals.size; k++){
             
             //For this point, whats the dimensions it correlated to?
-            std::vector<int> unflat_dim = vals.unflatten(n);
+            std::vector<int> unflat_dim = vals.unflatten(k);
 
             //First dom_dim size points are the grid indicies
             for(int t =0; t< dom_dim; t++){
-                input->domain(n,t) = unflat_dim.at(t);
+                input->domain(k,t) = unflat_dim.at(t);
             }
-
             //Next Nbins is the values of the data
             for(size_t b=0; b<vals.nbins; b++){
-                input->domain(n,dom_dim+b) = vals.data(k,b); 
+                input->domain(k,dom_dim+b) = vals.data(k,b); 
             }
-
-            n++;
         }
 
         // Init params from input data (must fill input->domain first)
@@ -256,10 +248,10 @@ struct Block : public BlockBase<T>
         core_mins = bounds_mins.head(dom_dim);
         core_maxs = bounds_maxs.head(dom_dim);
 
-        std::cout<<"Core Mins: "<<core_mins<<std::endl;
-        std::cout<<"Core Maxs: "<<core_maxs<<std::endl;
-        std::cout<<"Bound Mins: "<<bounds_mins<<std::endl;
-        std::cout<<"Bound Maxs: "<<bounds_maxs<<std::endl;
+        //std::cout<<"Core Mins: "<<core_mins<<std::endl;
+        //std::cout<<"Core Maxs: "<<core_maxs<<std::endl;
+        //std::cout<<"Bound Mins: "<<bounds_mins<<std::endl;
+        //std::cout<<"Bound Maxs: "<<bounds_maxs<<std::endl;
         // debug
         //cerr << "domain extent:\n min\n" << this->bounds_mins << "\nmax\n" << this->bounds_maxs << endl;
     }
@@ -270,7 +262,7 @@ struct Block : public BlockBase<T>
 inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, const diy::Master::ProxyWithLink& cp, int nbins, int mfadim, std::vector<int> nctrl_pts, int deg)
 {
     // default command line arguments
-    int    dom_dim      = mfadim;                    // dimension of domain (<= pt_dim)
+    int    dom_dim      = mfadim;               // dimension of domain (<= pt_dim)
     int    pt_dim       = nbins+dom_dim;        // dimension of input points
     double noise        = 0.0;                  // fraction of noise
 
@@ -294,9 +286,6 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
         d_args.ndom_pts[i] = v_nctrls[i];   
     }
 
-    int mass = v_nctrls[0];
-    int dim2 = v_nctrls[1];
-    int dim3 = v_nctrls[2];
 
     //How many TOTAL control points
     int signalgridsize = 1;
@@ -304,7 +293,7 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
         signalgridsize *= nctrl_pts[i];
     }
 
-    MFAvalues values(signalgridsize,nbins, v_nctrls);	
+    MFAvalues values(signalgridsize, nbins, nctrl_pts);	
 
 
     std::cout<<"Starting signalgridsize "<<std::endl;
@@ -317,10 +306,8 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
 
         //values.grid_indicies[i] =  {i % mass, (i / mass) % dim2, i / (dim2 * mass)};
         //map_bin_to_grid[bin][gridx_index][gridy_index][gridz_index] = values(i,bin); 
-        //
         double t_d = MPI_Wtime();
     }
-
 
     double t1 = MPI_Wtime();
     std::cout << "time to create the tensor: " << t1-t0 << std::endl;
@@ -425,11 +412,14 @@ int main(int argc, char* argv[])
     diy_master.foreach([&](Block<double>* b, const diy::Master::ProxyWithLink& cp){
             Eigen::VectorXd out_pt(b->pt_dim);
             Eigen::VectorXd in_param(b->dom_dim);
+            in_param.setConstant(0.25);
+            
             std::cout<<" Inside: "<<b->pt_dim<<" "<<b->dom_dim<<std::endl;
-            in_param.setConstant(0.45);
+
             double t1 = MPI_Wtime();
             b->decode_point(cp, in_param, out_pt);
             double t0 = MPI_Wtime();
+           
             std::cout << "time to decode a single point: " << t0-t1 <<" seconds? "<< std::endl;
             std::cout<<"Final Res: \n "<<out_pt<<std::endl;               
             });
