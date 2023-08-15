@@ -115,7 +115,7 @@ namespace PROfit{
         float GetUniverseWeight(int which_index , int which_uni){
             for(int s = 0; s<i_wgt_size;s++){
                 if(v_truth_index[s]==0){
-                    return v_wgt_univ[v_wgt_idx[s]+v_wgt_univ_idx[which_index]+which_uni];
+                    return v_wgt_univ[v_wgt_univ_idx[v_wgt_idx[s] + which_index] + which_uni];
                 }
             }
 
