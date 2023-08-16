@@ -173,7 +173,7 @@ struct Block : public BlockBase<T>
                 int                 pt_dim,             // point dimensionality
                 T                   ghost_factor = 0.0) // amount of ghost zone overlap as a factor of block size (0.0 - 1.0)
         {
-            mfa::add<Block, T>(gid, core, bounds, domain, link, master, dom_dim, pt_dim, ghost_factor);
+            //mfa::add<Block, T>(gid, core, bounds, domain, link, master, dom_dim, pt_dim, ghost_factor);
         }
 
     static
@@ -403,17 +403,24 @@ int main(int argc, char* argv[])
 
     //What is a decomposer here eh, I think its assigning blocks to the MPI nodes
     std::cout<<"diy_decomposer.decompose"<<std::endl;
-    diy_decomposer.decompose(world.rank(),
-            assigner,
-            [&](int gid, const Bounds<double>& core, const Bounds<double>& bounds, const Bounds<double>& domain, const RCLink<double>& link)
-            { Block<double>::add(gid, core, bounds, domain, link, diy_master, mfadim, nBins+mfadim, 0.0); });
+    //diy_decomposer.decompose(world.rank(),
+    //        assigner,
+    //        [&](int gid, const Bounds<double>& core, const Bounds<double>& bounds, const Bounds<double>& domain, const RCLink<double>& link)
+    //        {
 
+
+    Block<double>*b;
+    diy::Master::ProxyWithLink * cp;
+    RCLink<double>* link;
+
+    b->add(0, domain, domain, domain, *link, diy_master, mfadim, nBins+mfadim, 0.0);
 
     // This is whats building the SignalModel
     std::cout<<"diy_master.foreach"<<std::endl;
     double T10 = MPI_Wtime();
-    diy_master.foreach([world,nBins, mfadim, ncontrol_pts, degree](Block<double>* b, const diy::Master::ProxyWithLink& cp){
-            makeSignalModel(world, b, cp,  nBins, mfadim, ncontrol_pts, degree);});
+    //diy_master.foreach([world,nBins, mfadim, ncontrol_pts, degree](Block<double>* b, const diy::Master::ProxyWithLink& cp){
+    //        makeSignalModel(world, b, cp,  nBins, mfadim, ncontrol_pts, degree);});
+    makeSignalModel(world, b, *cp,  nBins, mfadim, ncontrol_pts, degree);
 
     double T11   = MPI_Wtime();
     if (world.rank()==0) std::cout << "time to build model: " << T11-T10 << " seconds." << std::endl;
@@ -421,7 +428,9 @@ int main(int argc, char* argv[])
 
     //And decoding
     std::cout<<"Testing Decodin"<<std::endl;
-    diy_master.foreach([&](Block<double>* b, const diy::Master::ProxyWithLink& cp){
+    //diy_master.foreach([&](Block<double>* b, const diy::Master::ProxyWithLink& cp){
+
+
             Eigen::VectorXd out_pt(b->pt_dim);
             Eigen::VectorXd in_param(b->dom_dim);
             in_param.setConstant(0.4512412);
@@ -429,12 +438,12 @@ int main(int argc, char* argv[])
             std::cout<<" Inside: "<<b->pt_dim<<" "<<b->dom_dim<<std::endl;
 
             double t1 = MPI_Wtime();
-            b->decode_point(cp, in_param, out_pt);
+            b->decode_point(*cp, in_param, out_pt);
             double t0 = MPI_Wtime();
            
             std::cout << "time to decode a single point: " << t0-t1 <<" seconds? "<< std::endl;
             std::cout<<"Final Res: \n "<<out_pt<<std::endl;               
-            });
+     //       });
 
 
     std::cout<<" OK, things are setup. "<<std::endl;
