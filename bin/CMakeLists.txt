@@ -6,10 +6,11 @@ target_link_libraries(PROfit PRIVATE PROfitLib tinyxml2 eigen lbfgspp PROfit_dic
 
 
 if(MPI_ENABLE)
-    add_executable(PROmfa4u PROmfa4u.cxx)
+    add_executable(PROmfa4u PROmfa4u.cxx ${CMAKE_BINARY_DIR}/PROfit_dict.cxx )
+    target_include_directories(PROmfa4u PRIVATE ${SBNANAOBJ_INCLUDE_DIR})
     target_compile_features(PROmfa4u PRIVATE cxx_std_14)
-    target_link_libraries(PROmfa4u PRIVATE PROfitLib tinyxml2 eigen lbfgspp )
-
+    target_link_directories(PROfit_dict PRIVATE ${CMAKE_BINARY_DIR})
+    target_link_libraries(PROmfa4u PRIVATE PROfitLib tinyxml2 eigen lbfgspp PROfit_dict ${libraries})
 endif(MPI_ENABLE)
 
 

@@ -1,27 +1,25 @@
 #include "PROmfa.h"
-#include <mfa/mfa.hpp>
-#include <mfa/block_base.hpp>
 
-using namespace PROfit;
+namespace PROfit{
 
 
 std::vector<int> MFAvalues::unflatten(int index){
-            std::vector<int> coordinates(dimensions.size());
-            int product = 1;
+    std::vector<int> coordinates(dimensions.size());
+    int product = 1;
 
-            for (int i = dimensions.size() - 1; i >= 0; --i) {
-                coordinates[i] = (index / product) % dimensions[i];
-                product *= dimensions[i];
-            }
+    for (int i = dimensions.size() - 1; i >= 0; --i) {
+        coordinates[i] = (index / product) % dimensions[i];
+        product *= dimensions[i];
+    }
 
-            for(auto &c : coordinates){
-                if( c!=c || !std::isfinite(c)){
-                std::cout<<"BLARG "<<c<<std::endl;
-                }
-            }
-            std::reverse(coordinates.begin(), coordinates.end());
-            return coordinates;
+    for(auto &c : coordinates){
+        if( c!=c || !std::isfinite(c)){
+            std::cout<<"BLARG "<<c<<std::endl;
         }
+    }
+    std::reverse(coordinates.begin(), coordinates.end());
+    return coordinates;
+}
 
 
 
@@ -51,7 +49,7 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
     for(int i =0; i< dom_dim; i++){
         d_args.max[i] = v_nctrls[i] - 1;
     }
-   
+
     for(int i = 0; i < d_args.ndom_pts.size(); i++){
         d_args.ndom_pts[i] = v_nctrls[i];   
     }
@@ -113,7 +111,6 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
 void runMFA(){
 
     //Some DIY MPI setup. 
-    diy::mpi::environment env(argc, argv);
     diy::mpi::communicator world;
 
     std::cout<<"World Rank: "<<world.rank()<<std::endl;
@@ -154,7 +151,7 @@ void runMFA(){
     std::cout<<"diy_master.foreach"<<std::endl;
     double T10 = MPI_Wtime();
     diy_master.foreach([world,nBins, mfadim, ncontrol_pts, degree](Block<double>* b, const diy::Master::ProxyWithLink& cp){
-            makeSignalModel(world, b, cp,  nBins, mfadim, ncontrol_pts, degree);});
+            PROfit::makeSignalModel(world, b, cp,  nBins, mfadim, ncontrol_pts, degree);});
 
     double T11   = MPI_Wtime();
     if (world.rank()==0) std::cout << "time to build model: " << T11-T10 << " seconds." << std::endl;
@@ -166,13 +163,13 @@ void runMFA(){
             Eigen::VectorXd out_pt(b->pt_dim);
             Eigen::VectorXd in_param(b->dom_dim);
             in_param.setConstant(0.4512412);
-            
+
             std::cout<<" Inside: "<<b->pt_dim<<" "<<b->dom_dim<<std::endl;
 
             double t1 = MPI_Wtime();
             b->decode_point(cp, in_param, out_pt);
             double t0 = MPI_Wtime();
-           
+
             std::cout << "time to decode a single point: " << t0-t1 <<" seconds? "<< std::endl;
             std::cout<<"Final Res: \n "<<out_pt<<std::endl;               
             });
@@ -194,4 +191,4 @@ void runMFA(){
 
 
 
-
+}

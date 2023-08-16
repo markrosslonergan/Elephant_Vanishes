@@ -219,6 +219,7 @@ namespace PROfit{
 
     };
 
+
     /* Function: Actually filles and encodes the MFA model. 
     */
     inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, const diy::Master::ProxyWithLink& cp, int nbins, int mfadim, std::vector<int> nctrl_pts, int deg);
@@ -226,7 +227,7 @@ namespace PROfit{
 
     /* Function: Actually filles and encodes the MFA model. 
     */
-    void runMFA();
+    int runMFA();
 
 
 
