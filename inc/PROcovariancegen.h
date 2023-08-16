@@ -21,6 +21,8 @@
 
 // PROfit
 #include "PROconfig.h"
+#include "PROspec.h"
+#include "PROcreate.h"
 
 //Delete when ready
 #include "TMatrixDEigen.h"
@@ -61,6 +63,9 @@
 
 namespace PROfit{
 
+    /* Function: given a syst struct with cv and variation spectra, build fractional covariance matrix for the systematics, and return it. 
+     */
+    Eigen::MatrixXd GenerateCovarMatrix(const SystStruct& sys_obj);
 
 int generateFracCovarianceFromXML(const PROconfig &inconfig, Eigen::MatrixXd &out_frac_covar);
 

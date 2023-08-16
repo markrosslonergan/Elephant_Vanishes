@@ -1,6 +1,8 @@
 #include "PROcreate.h"
+#include "Eigen/src/Core/Matrix.h"
 #include "TTree.h"
 #include "TFile.h"
+#include <algorithm>
 
 namespace PROfit {
 
@@ -21,6 +23,15 @@ namespace PROfit {
         return;
     }
 
+
+    const PROspec& SystStruct::CV() const{
+	return *p_cv;
+    }
+
+    const PROspec& SystStruct::Variation(int universe) const{
+   	return *(p_multi_spec.at(universe));
+    }
+
     void SystStruct::FillCV(long int global_bin, double event_weight){
 	p_cv->Fill(global_bin, event_weight);
 	return;
@@ -30,7 +41,6 @@ namespace PROfit {
 	p_multi_spec.at(universe)->Fill(global_bin, event_weight);
 	return;
     }
-
 
     void SystStruct::SanityCheck() const{
         if(mode == "minmax" && n_univ != 2){
@@ -54,6 +64,84 @@ namespace PROfit {
         }
 
         return;
+    }
+
+    void SystStruct::FillSpline() {
+      std::vector<PROspec> ratios;
+      ratios.reserve(p_multi_spec.size());
+      for(const auto& spec: p_multi_spec) {
+        ratios.push_back(*spec / *p_cv);
+      }
+      spline_coeffs.reserve(p_cv->GetNbins());
+      for(long i = 0; i < p_cv->GetNbins(); ++i) {
+        std::vector<std::array<double, 4>> spline;
+        spline.reserve(knobval.size());
+
+        // This is cubic interpolation. For each adjacent set of four points we
+        // determine coefficients for a cubic which will be the curve between the
+        // center two. We constrain the function to match the two center points
+        // and to have the right mean gradient at them. This causes this patch to
+        // match smoothly with the next one along. The resulting function is
+        // continuous and first and second differentiable. At the ends of the
+        // range we fit a quadratic instead with only one constraint on the
+        // slope. The coordinate conventions are that point y1 sits at x=0 and y2
+        // at x=1. The matrices are simply the inverses of writing out the
+        // constraints expressed above.
+
+        const double y1 = ratios[0].GetBinContent(i);
+        const double y2 = ratios[1].GetBinContent(i);
+        const double y3 = ratios[2].GetBinContent(i);
+        const Eigen::Vector3d v{y1, y2, (y3-y1)/2};
+        const Eigen::Matrix3d m{{ 1, -1,  1},
+                                {-2,  2, -1},
+                                { 1,  0,  0}};
+        const Eigen::Vector3d res = m * v;
+        spline.push_back({res(2), res(1), res(0), 0});
+
+        for(unsigned int shiftIdx = 1; shiftIdx < ratios.size()-2; ++shiftIdx){
+          const double y0 = ratios[shiftIdx-1].GetBinContent(i);
+          const double y1 = ratios[shiftIdx  ].GetBinContent(i);
+          const double y2 = ratios[shiftIdx+1].GetBinContent(i);
+          const double y3 = ratios[shiftIdx+2].GetBinContent(i);
+          const Eigen::Vector4d v{y1, y2, (y2-y0)/2, (y3-y1)/2};
+          const Eigen::Matrix4d m{{ 2, -2,  1,  1},
+                                  {-3,  3, -2, -1},
+                                  { 0,  0,  1,  0},
+                                  { 1,  0,  0,  0}};
+          const Eigen::Vector4d res = m * v;
+          spline.push_back({res(3), res(2), res(1), res(0)});
+        }
+
+        const double y4 = ratios[ratios.size() - 3].GetBinContent(i);
+        const double y5 = ratios[ratios.size() - 2].GetBinContent(i);
+        const double y6 = ratios[ratios.size() - 1].GetBinContent(i);
+        const Eigen::Vector3d vp{y5, y6, (y6-y4)/2};
+        const Eigen::Matrix3d mp{{-1,  1, -1},
+                                 { 0,  0,  1},
+                                 { 1,  0,  0}};
+        const Eigen::Vector3d resp = mp * vp;
+        spline.push_back({resp(2), resp(1), resp(0), 0});
+        
+        spline_coeffs.push_back(spline);
+      }
+    }
+
+    double SystStruct::GetSplineShift(long bin, double shift) {
+      if(bin < 0 || bin >= p_cv->GetNbins()) return -1;
+      long shiftBin = (shift < knobval[0]) ? 0 : (long)(shift - knobval[0]);
+      if(shiftBin > spline_coeffs[0].size() - 1) shiftBin = spline_coeffs[0].size() - 1;
+      // We should use the line below if we switch to c++17
+      // const long shiftBin = std::clamp((long)(shift - knobval[0]), 0, spline_coeffs[0].size() - 1);
+      std::array<double, 4> coeffs = spline_coeffs[bin][shiftBin];
+      shift -= knobval[shiftBin];
+      return coeffs[0] + coeffs[1]*shift + coeffs[2]*shift*shift + coeffs[3]*shift*shift*shift;
+    }
+
+    PROspec SystStruct::GetSplineShiftedSpectrum(double shift) {
+      PROspec ret(p_cv->GetNbins());
+      for(long i = 0; i < p_cv->GetNbins(); ++i)
+        ret.Fill(i, GetSplineShift(i, shift) * p_cv->GetBinContent(i));
+      return ret;
     }
 
 
@@ -298,7 +386,7 @@ int PROcess_SBNfit(const PROconfig &inconfig){
 }
 
 
-    int PROcess_CAFana(const PROconfig &inconfig){
+    int PROcess_CAFana(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector){
 
         log<LOG_DEBUG>(L"%1% || Starting to construct CovarianceMatrixGeneration in EventWeight Mode  ") % __func__ ;
 
@@ -319,10 +407,10 @@ int PROcess_SBNfit(const PROconfig &inconfig){
         std::vector<int> pset_indices_tmp;
         std::vector<int> pset_indices;
         std::vector<std::vector<float>> knobvals;
+        std::vector<std::vector<float>> knob_index;
         std::vector<std::string> cafana_pset_names;
 
         int good_event = 0;
-        std::vector<SystStruct> syst_vector;
 
         std::vector<PROfit::CAFweightHelper> v_cafhelper(num_files);
 
@@ -333,10 +421,6 @@ int PROcess_SBNfit(const PROconfig &inconfig){
             trees[fid] = (TTree*)(files[fid]->Get(inconfig.m_mcgen_tree_name.at(fid).c_str()));
             TTree * globalTree = (TTree*)(files[fid]->Get("globalTree"));
             nentries[fid]= (long int)trees.at(fid)->GetEntries();
-
-
-
-
 
             if(files[fid]->IsOpen()){
                 log<LOG_INFO>(L"%1% || Root file succesfully opened: %2%") % __func__  % fn.c_str();
@@ -359,7 +443,9 @@ int PROcess_SBNfit(const PROconfig &inconfig){
                 pset_indices.push_back(i);
                 cafana_pset_names.push_back(pset.name);
                 map_systematic_num_universe[pset.name] = std::max(map_systematic_num_universe[pset.name], pset.nuniv);
+                knob_index.push_back(pset.map.at(0).vals);
                 knobvals.push_back(pset.map.at(0).vals);
+                std::sort(knobvals.back().begin(), knobvals.back().end());
             }
 
             //Setup things for grabbing the CAFana weights
@@ -371,26 +457,6 @@ int PROcess_SBNfit(const PROconfig &inconfig){
             trees[fid]->SetBranchAddress("rec.mc.nu.wgt..idx",v_cafhelper[fid].v_wgt_idx);
             trees[fid]->SetBranchAddress("rec.mc.nu.wgt.univ..length",v_cafhelper[fid].v_wgt_univ_length);
             trees[fid]->SetBranchAddress("rec.mc.nu.index", v_cafhelper[fid].v_truth_index);
-
-
-            //first, grab friend trees
-            auto mcgen_file_friend_treename_iter = inconfig.m_mcgen_file_friend_treename_map.find(fn);
-            if (mcgen_file_friend_treename_iter != inconfig.m_mcgen_file_friend_treename_map.end()) {
-
-                auto mcgen_file_friend_iter = inconfig.m_mcgen_file_friend_map.find(fn);
-                if (mcgen_file_friend_iter == inconfig.m_mcgen_file_friend_map.end()) {
-                    log<LOG_ERROR>(L"%1% || Friend TTree provided but no friend file??") % __func__;
-                    log<LOG_ERROR>(L"Terminating.");
-                    exit(EXIT_FAILURE);
-                }
-
-                for(size_t k=0; k < mcgen_file_friend_treename_iter->second.size(); k++){
-
-                    std::string treefriendname = mcgen_file_friend_treename_iter->second.at(k);
-                    std::string treefriendfile = mcgen_file_friend_iter->second.at(k);
-                    trees[fid]->AddFriend(treefriendname.c_str(),treefriendfile.c_str());
-                }
-            }
 
             // grab branches 
             int num_branch = inconfig.m_branch_variables[fid].size();
@@ -481,7 +547,7 @@ int PROcess_SBNfit(const PROconfig &inconfig){
                 log<LOG_DEBUG>(L"%1% || emplace syst_vector") % __func__  ;
                 log<LOG_DEBUG>(L"%1% || varname: %2% , map: %3% , sform: %5% , varmode %4%, knobvals[v]size %6%, psetindex %7%  ") % __func__  % varname.c_str() % map_systematic_num_universe[varname] % variation_mode.c_str() % s_formula.c_str() % knobvals[v].size() % pset_indices[v] ;
 
-                syst_vector.emplace_back(varname, map_systematic_num_universe[varname], variation_mode, s_formula, knobvals[v], pset_indices[v]);
+                syst_vector.emplace_back(varname, map_systematic_num_universe[varname], variation_mode, s_formula, knobvals[v], knob_index[v], pset_indices[v]);
             }
 
         } // end fid
@@ -516,8 +582,6 @@ int PROcess_SBNfit(const PROconfig &inconfig){
                 sys_weight_formula.push_back(std::make_unique<TTreeFormula>(("weightMapsFormulas_"+std::to_string(fid)+"_"+ s.GetSysName()).c_str(), s.GetWeightFormula().c_str(),trees[fid]));
             }
             log<LOG_DEBUG>(L"%1% || Finished setting up systematic weight formula") % __func__;
-
-
 
             // grab the subchannel index
             int num_branch = inconfig.m_branch_variables[fid].size();
@@ -568,7 +632,7 @@ int PROcess_SBNfit(const PROconfig &inconfig){
 
         int is = 0;
         for(SystStruct & syst : syst_vector){
-
+            syst.FillCV(global_bin, add_weight);
             formulas[is]->GetNdata();
             double sys_weight_value =formulas[is]->EvalInstance();
 
@@ -579,7 +643,11 @@ int PROcess_SBNfit(const PROconfig &inconfig){
 
             int nuniv = syst.GetNUniverse();
             for(long int u =0; u<nuniv; u++){
-                float this_weight = caf_helper.GetUniverseWeight(syst.index, u);
+                int i = 0;
+                for(; i < nuniv; ++i) {
+                  if(syst.knob_index[i] == syst.knobval[u]) break;
+                }
+                float this_weight = caf_helper.GetUniverseWeight(syst.index, i);
 		syst.FillUniverse(u, global_bin, add_weight*this_weight);
                 //std::cout<<"WEI "<<is<<" "<<u<<global_bin<<" "<<add_weight<<" "<<this_weight<<std::endl;
             }

@@ -76,3 +76,30 @@ int generateFracCovarianceFromXML(const PROconfig &inconfig, Eigen::MatrixXd &ou
     return 0;
 }
 
+
+Eigen::MatrixXd GenerateCovarMatrix(const SystStruct& sys_obj){
+
+    int n_universe = sys_obj.GetNUniverse(); 
+    std::string sys_name = sys_obj.GetSysName();
+    
+    const PROspec& cv_spec = sys_obj.CV();
+    long int nbins = cv_spec.GetNbins();
+
+    //build full covariance matrix 
+    Eigen::MatrixXd full_covar_matrix = Eigen::MatrixXd::Zero(nbins, nbins);
+    for(int i = 0; i != n_universe; ++i){
+	auto spec_diff  = cv_spec - sys_obj.Variation(i);
+	full_covar_matrix += (spec_diff.Spec() * spec_diff.Spec().transpose() ) / static_cast<double>(n_universe);
+    }
+ 
+    //build fractional covariance matrix 
+    //first, get the matrix with diagonal being reciprocal of CV spectrum prdiction
+    Eigen::MatrixXd cv_spec_matrix =  Eigen::MatrixXd::Identity(nbins, nbins);
+    for(int i =0; i != nbins; ++i)
+	cv_spec_matrix(i, i) = 1.0/cv_spec.GetBinContent(i);
+
+    //second, get fractioal covar
+    Eigen::MatrixXd frac_covar_matrix = cv_spec_matrix * full_covar_matrix * cv_spec_matrix;
+
+    return frac_covar_matrix;
+}
