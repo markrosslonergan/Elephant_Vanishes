@@ -108,10 +108,7 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
 
 
 
-int runMFA(){
-
-    //Some DIY MPI setup. 
-    diy::mpi::communicator world;
+int runMFA( diy::mpi::environment &env,  diy::mpi::communicator &world){
 
     std::cout<<"World Rank: "<<world.rank()<<std::endl;
     size_t blocks = world.size();

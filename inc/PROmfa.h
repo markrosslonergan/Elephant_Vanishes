@@ -227,7 +227,7 @@ namespace PROfit{
 
     /* Function: Actually filles and encodes the MFA model. 
     */
-    int runMFA();
+    int runMFA( diy::mpi::environment & env,  diy::mpi::communicator & world);
 
 
 
