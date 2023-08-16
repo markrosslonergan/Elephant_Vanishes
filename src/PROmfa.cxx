@@ -108,7 +108,7 @@ inline void makeSignalModel(diy::mpi::communicator world, Block<double>* b, cons
 
 
 
-void runMFA(){
+int runMFA(){
 
     //Some DIY MPI setup. 
     diy::mpi::communicator world;
