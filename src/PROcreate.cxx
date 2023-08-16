@@ -526,7 +526,8 @@ int PROcess_SBNfit(const PROconfig &inconfig, std::vector<SystStruct>& syst_vect
 
                 //Variation Weight Maps Area
                 int n_wei = inconfig.m_mcgen_weightmaps_patterns.size();
-                std::string variation_mode = "multisim"; 
+                std::string variation_mode = "multisim";
+                if(varname.find("multisigma") != std::string::npos) variation_mode = "multisigma";
                 std::string s_formula = "1";
 
                 for(int i=0; i< n_wei; i++){
@@ -542,7 +543,7 @@ int PROcess_SBNfit(const PROconfig &inconfig, std::vector<SystStruct>& syst_vect
 
                 log<LOG_DEBUG>(L"%1% || %2% has %3% montecarlos in fie %4% ") % __func__ % varname.c_str() % map_systematic_num_universe[varname] % fid  ;
 
-                map_systematic_num_universe[varname] = std::max((int)map_systematic_num_universe[varname], (int)knobvals[v].size());
+                //map_systematic_num_universe[varname] = std::max((int)map_systematic_num_universe[varname], (int)knobvals[v].size());
 
                 //Some code to check if this varname is already in the syst_vector. If it is, check if things are the same, otherwise PANIC!
                 log<LOG_DEBUG>(L"%1% || emplace syst_vector") % __func__  ;
@@ -645,8 +646,12 @@ int PROcess_SBNfit(const PROconfig &inconfig, std::vector<SystStruct>& syst_vect
             int nuniv = syst.GetNUniverse();
             for(long int u =0; u<nuniv; u++){
                 int i = 0;
-                for(; i < nuniv; ++i) {
-                  if(syst.knob_index[i] == syst.knobval[u]) break;
+                if(syst.mode == "multisigma") {
+                  for(; i < nuniv; ++i) {
+                    if(syst.knob_index[i] == syst.knobval[u]) break;
+                  }
+                } else {
+                  i = u;
                 }
                 float this_weight = caf_helper.GetUniverseWeight(syst.index, i);
 		syst.FillUniverse(u, global_bin, add_weight*this_weight);
