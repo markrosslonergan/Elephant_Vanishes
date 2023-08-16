@@ -381,7 +381,7 @@ int main(int argc, char* argv[])
 
     //Some core inputs
     int mfadim = 3; //Dimension of the MFA model (input)
-    int nBins = 3; //Dimension of output of MFA? I believe so 
+    int nBins = 20; //Dimension of output of MFA? I believe so 
     int degree = 2;//Science degree? Not sure... polynomial degree?
     std::vector<int> ncontrol_pts(mfadim); // mfadim each has dim 7 for +/-1,2,3 sigma and CV
     std::fill(ncontrol_pts.begin(), ncontrol_pts.end(), 7);
@@ -424,7 +424,7 @@ int main(int argc, char* argv[])
     diy_master.foreach([&](Block<double>* b, const diy::Master::ProxyWithLink& cp){
             Eigen::VectorXd out_pt(b->pt_dim);
             Eigen::VectorXd in_param(b->dom_dim);
-            in_param.setConstant(0.45);
+            in_param.setConstant(0.4512412);
             
             std::cout<<" Inside: "<<b->pt_dim<<" "<<b->dom_dim<<std::endl;
 
