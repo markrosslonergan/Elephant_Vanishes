@@ -1,6 +1,5 @@
 #include "PROconfig.h"
 #include "PROspec.h"
-#include "PROcovariancegen.h"
 #include "sbnanaobj/StandardRecord/SRGlobal.h"
 #include "sbnanaobj/StandardRecord/SRWeightPSet.h"
 

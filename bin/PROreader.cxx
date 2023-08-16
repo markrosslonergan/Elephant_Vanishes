@@ -1,6 +1,5 @@
 #include "PROconfig.h"
 #include "PROspec.h"
-#include "PROcovariancegen.h"
 #include "sbnanaobj/StandardRecord/SRGlobal.h"
 #include "sbnanaobj/StandardRecord/SRWeightPSet.h"
 
@@ -8,6 +7,7 @@
 #include "LBFGSB.h"
 
 #include "TFile.h"
+#include "TTree.h"
 
 #include <memory>
 #include <string>
@@ -84,16 +84,53 @@ int main(int argc, char* argv[])
     recTree->SetBranchAddress("rec.mc.nu.wgt..idx",v_wgt_idx);
     recTree->SetBranchAddress("rec.mc.nu.wgt.univ..length",v_wgt_univ_length);
     recTree->SetBranchAddress("rec.mc.nu.index", v_truth_index);
-    recTree->GetEntry(num);
 
 
+    for(int ientry = 0; ientry != recTree->GetEntries(); ++ientry){
+  	recTree->GetEntry(ientry);
+	if(ientry <= 5){
+	    std::cout << "On Entry : " << ientry << std::endl;
+	    std::cout << " rec.mc.nu.wgt.univ..totarraysize : " << i_wgt_univ_size << std::endl;
+	    std::cout << " rec.mc.nu..length : " << i_wgt_size << std::endl;
+	    std::cout << " rec.mc.nu.wgt..totarraysize : " << i_wgt_totsize << std::endl;
+	
+	    std::cout << " rec.mc.nu.index: ";
+	    for(int k = 0; k != i_wgt_size; ++k)
+		std::cout << v_truth_index[k] << " ";
+	    std::cout << std::endl;
+
+	    std::cout << " rec.mc.nu.wgt..idx : ";
+	    for(int k = 0; k != i_wgt_size; ++k)
+		std::cout << v_wgt_idx[k] << " ";
+	    std::cout << std::endl;
+
+	    std::cout << " rec.mc.nu.wgt.univ..idx : ";
+	    for(int k = 0; k != i_wgt_totsize; ++k)
+		std::cout << v_wgt_univ_idx[k] << " ";
+	    std::cout << std::endl;
+
+	    std::cout << " rec.mc.nu.wgt.univ..length : ";
+	    for(int k = 0; k != i_wgt_totsize; ++k){
+		std::cout << v_wgt_univ_length[k] << " ";
+	    } 
+	    std::cout << std::endl;
+
+	    std::cout << " rec.mc.nu.wgt.univ : ";
+	    for(int k = 0; k != std::min({i_wgt_univ_size, 1000}); ++k)
+		std::cout << v_wgt_univ[k] << " ";
+	    std::cout << std::endl;
+	}
+
+    if(false){
     std::cout<<"  rec.mc.nu.wgt.univ (val):  "<<v_wgt_univ[0]<<" (rec.mc.nu.wgt.univ..idx) (indx): "<<v_wgt_univ_idx[0]<<" both of length be: "<<i_wgt_univ_size<<" (rec.mc.nu.wgt..totarraysize )"<<std::endl; 
     std::cout<<"  rec.mc.nu.wgt..idx (idx):  "<<v_wgt_idx[0]<<" of length be: "<<i_wgt_size<<" (rec.slc..length)"<<std::endl; 
     for(int k=0; k< i_wgt_size; k++)std::cout<<v_wgt_idx[k]<<" ";
     std::cout<<std::endl;
 
     std::cout<<"  rec.mc.nu.wgt.univ..length (val):  "<<v_wgt_univ_length[0]<<" of length be: "<<i_wgt_totsize<<" (rec.mc.nu.wgt..totarraysize)" <<std::endl; 
+    }
 
+    if(ientry == recTree->GetEntries() -1){
     //rec.mc.nu.wgh.univ[rec.mc.nu.wgt..idx[SLC]+I]+6
     for(int s = 0; s<i_wgt_size;s++){
         if(v_truth_index[s]==0){
@@ -104,8 +141,39 @@ int main(int argc, char* argv[])
             }std::cout<<std::endl;
         }
     }
+    }
+
+    }
+
+   /*
+    float *v_wgt_univ=nullptr;
+    int *v_wgt_univ_idx=nullptr;
+    int *v_wgt_idx=nullptr;
+    int *v_wgt_univ_length=nullptr;
+    int *v_truth_index=nullptr;
+
+    recTree->SetBranchAddress("rec.mc.nu.wgt.univ..totarraysize", &i_wgt_univ_size);
+    recTree->SetBranchAddress("rec.mc.nu..length", &i_wgt_size);
+    recTree->SetBranchAddress("rec.mc.nu.wgt..totarraysize",&i_wgt_totsize);
+
+    recTree->SetBranchAddress("rec.mc.nu.wgt.univ", &v_wgt_univ);
+    recTree->SetBranchAddress("rec.mc.nu.wgt.univ..idx", &v_wgt_univ_idx);
+    recTree->SetBranchAddress("rec.mc.nu.wgt..idx",&v_wgt_idx);
+    recTree->SetBranchAddress("rec.mc.nu.wgt.univ..length",&v_wgt_univ_length);
+    recTree->SetBranchAddress("rec.mc.nu.index", &v_truth_index);
+    recTree->GetEntry(num);
 
 
+    std::cout << " rec.mc.nu.wgt.univ..totarraysize : " << i_wgt_univ_size << std::endl;
+    std::cout << " rec.mc.nu..length : " << i_wgt_size << std::endl;
+    std::cout << " rec.mc.nu.wgt..totarraysize      : " << i_wgt_totsize << std::endl; 
+    std::cout << " vector length ----" << std::endl; 
+    std::cout << " rec.mc.nu.wgt.univ : " << v_wgt_univ->size() << std::endl;
+    std::cout << " rec.mc.nu.wgt.univ..idx: " << v_wgt_univ_idx->size() << std::endl;
+    std::cout << " rec.mc.nu.wgt..idx   : " << v_wgt_idx->size() << std::endl; 
+    std::cout << " rec.mc.nu.wgt.univ..length : " << v_wgt_univ_length->size() << std::endl; 
+    std::cout << " rec.mc.nu.index : " << v_truth_index->size() << std::endl; 
+    */
 
     }
 

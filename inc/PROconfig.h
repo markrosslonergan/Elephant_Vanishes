@@ -30,7 +30,7 @@
 //ROOT
 #include "TTreeFormula.h"
 
-//#define TYPE_FLOAT
+#define TYPE_FLOAT
 #ifdef TYPE_FLOAT  
 typedef float eweight_type;
 #else
@@ -71,10 +71,12 @@ namespace PROfit{
 
         BranchVariable(std::string n, std::string t, std::string a) : name(n), type(t), associated_hist(a) {oscillate=false; associated_systematic=""; central_value =false;}
         BranchVariable(std::string n, std::string t, std::string a_hist, std::string a_syst, bool cv) : name(n), type(t), associated_hist(a_hist), associated_systematic(a_syst) { oscillate=false; central_value=cv;}
-        virtual void* GetValue(){return nullptr;};
-        virtual void* GetTrueValue(){return nullptr;};
-        virtual void* GetTrueL(){return nullptr;};
+        virtual void* GetValue(){return nullptr;};  //Function: evaluate branch 'name' and return the value. Usually its reconstructed quantity
+        virtual void* GetTrueValue(){return nullptr;};  //Function: evaluate formula 'true_param_name' and return the value. Usually it's true energy  
+        virtual void* GetTrueL(){return nullptr;};      //Function: evaluate formula 'true_L_name' and return the value. Usually it's true baseline.
 
+
+	/* Function: Return the TTreeformula for branch 'name', usually it's the reconstructed variable */
         std::shared_ptr<TTreeFormula> GetFormula(){
             return branch_formula;
         }
@@ -82,6 +84,8 @@ namespace PROfit{
         void SetOscillate(bool inbool){ oscillate = inbool; return;}
         bool GetOscillate(){ return oscillate;}
 
+
+	/* Function: evaluate additional weight setup in the branch and return in floating precision */
         double GetMonteCarloWeight(){
             if(branch_monte_carlo_weight_formula){ 
                 branch_monte_carlo_weight_formula->GetNdata();

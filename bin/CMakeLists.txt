@@ -22,4 +22,10 @@ target_compile_features(PROreader PRIVATE cxx_std_14)
 target_link_directories(PROfit_dict PRIVATE ${CMAKE_BINARY_DIR})
 target_link_libraries(PROreader PRIVATE PROfitLib tinyxml2 eigen lbfgspp PROfit_dict ${libraries})
 
+add_executable(PROtest PROtest.cxx ${CMAKE_BINARY_DIR}/PROfit_dict.cxx )
+target_include_directories(PROtest PRIVATE ${SBNANAOBJ_INCLUDE_DIR})
+target_compile_features(PROtest PRIVATE cxx_std_14)
+target_link_directories(PROfit_dict PRIVATE ${CMAKE_BINARY_DIR})
+target_link_libraries(PROtest PRIVATE PROfitLib tinyxml2 eigen lbfgspp PROfit_dict ${libraries})
+
 

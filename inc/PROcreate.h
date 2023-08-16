@@ -16,6 +16,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/SVD>
+#include <Eigen/Eigenvalues>
 
 //PROfit
 #include "PROlog.h"
@@ -58,31 +59,16 @@ namespace PROfit{
         inline
             void SetWeightFormula(const std::string& in_formula){weight_formula = in_formula; return;}
 
-        inline
-            int GetNUniverse() const {return n_univ;}
-
-        inline 
-            const std::string& GetSysName() const {return systname;}
-
-	inline 
-	    bool HasWeightFormula() const {return weight_formula == "1";}
-
-        inline 
-            const std::string& GetWeightFormula() const {return weight_formula;}
 
         std::vector<std::vector<eweight_type>> GetCovVec();
         std::vector<eweight_type> GetKnobs(int index, std::string variation);
 
-
-        /* Function: check if num of universes of this systematics matches with its type 
- 	 * Note: multisim mode can have many universes, while minmax mode can only have 2
- 	 */
-        void SanityCheck() const;
+	//----- Spectrum related functions ---
+	//----- Spectrum related functions ---
 
 	/* Function: clean up all the member spectra (but ONLY spectra) */
         void CleanSpecs();
 
-        void Print() const;
 
 	/* Function: create EMPTY spectra with given length 
  	 */ 
@@ -99,14 +85,57 @@ namespace PROfit{
 
 	/*Function: return the spectrum for variation at given universe */
 	const PROspec& Variation(int universe) const;
-    /* Function: Fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
-    void FillSpline();
 
-    /* Function: Get weight for bin for a given shift using spline */
-    double GetSplineShift(long bin, double shift);
 
-    /* Function: Get cv spectrum shifted using spline */
-    PROspec GetSplineShiftedSpectrum(double shift);
+	//----- Spline and Covariance matrix related ---
+	//----- Spline and Covariance matrix related ---
+	
+        /* Function: given a syst struct with cv and variation spectra, build fractional covariance matrix for the systematics, and return it. */ 
+        static Eigen::MatrixXd GenerateCovarMatrix(const SystStruct& sys_obj);
+
+
+
+        /* Function: check if given matrix is positive semi-definite with tolerance*/
+	static bool isPositiveSemiDefinite_WithTolerance(const Eigen::MatrixXd& in_matrix, double tolerance=1.0e-16);
+
+        /* Function: check if given matrix is positive semi-definite, no tolerance at all (besides precision error from Eigen) */
+	static bool isPositiveSemiDefinite(const Eigen::MatrixXd& in_matrix);
+
+    
+	/* Function: Fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
+    	void FillSpline();
+
+    	/* Function: Get weight for bin for a given shift using spline */
+    	double GetSplineShift(long bin, double shift);
+
+    	/* Function: Get cv spectrum shifted using spline */
+    	PROspec GetSplineShiftedSpectrum(double shift);
+
+	//---------- Helper Functions --------
+	//---------- Helper Functions --------
+	
+	/* Return number of universes for this systematic */
+        inline
+            int GetNUniverse() const {return n_univ;}
+
+        /* Return string of systematic name */
+        inline 
+            const std::string& GetSysName() const {return systname;}
+
+	/* Check if weight formula is set for this ysstematic */
+	inline 
+	    bool HasWeightFormula() const {return weight_formula == "1";}
+
+	/* Return a string of weight formula for this systematic */
+        inline 
+            const std::string& GetWeightFormula() const {return weight_formula;}
+
+        /* Function: check if num of universes of this systematics matches with its type 
+ 	 * Note: multisim mode can have many universes, while minmax mode can only have 2
+ 	 */
+        void SanityCheck() const;
+        void Print() const;
+
     };
 
 
@@ -143,7 +172,7 @@ namespace PROfit{
     /* Function: given config, read files in the xml, and grab all systematic variations 
      * TODO: not finished yet
      */
-    int PROcess_SBNfit(const PROconfig &inconfig);
+    int PROcess_SBNfit(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector);
     int PROcess_CAFana(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector);
 
     int PROcess_CAFana_Event(const PROconfig &inconfig, std::vector<std::unique_ptr<TTreeFormula>> & formulas, std::vector<SystStruct> &syst_vector, CAFweightHelper &caf_helper, double add_weight, long int global_bin);
