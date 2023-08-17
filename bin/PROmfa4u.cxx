@@ -176,7 +176,8 @@ int main(int argc, char* argv[])
     // Create input data set and add to block
     std::cout << "mfadim, mdims, ndom_pts.prod(), ndom_pts: " << mfadim << ", " << mfa_info.model_dims() << ", " << ndom_pts.prod() << ", " << ndom_pts << std::endl;
 
-    mfa::PointSet<double> * input = new mfa::PointSet<double>(mfadim, mfa_info.model_dims(), ndom_pts.prod(), ndom_pts);
+    mfa::PointSet<double> input(mfadim, mfa_info.model_dims(), ndom_pts.prod(), ndom_pts);
+    //mfa::PointSet<double> * input = new mfa::PointSet<double>(mfadim, mfa_info.model_dims(), ndom_pts.prod(), ndom_pts);
 
     for(size_t k = 0; k< values.size; k++){
 
@@ -185,11 +186,11 @@ int main(int argc, char* argv[])
 
         //First mfadim size points are the grid indicies
         for(int t =0; t< mfadim; t++){
-            input->domain(k,t) = unflat_dim.at(t);
+            input.domain(k,t) = unflat_dim.at(t);
         }
         //Next Nbins is the values of the data
         for(size_t b=0; b<values.nBins; b++){
-            input->domain(k,mfadim+b) = values.data(k,b); 
+            input.domain(k,mfadim+b) = values.data(k,b); 
             //std::cout << "index n, 3+m, i, j, k, vals: " << k << ", " << mfadim+b << ", " << unflat_dim[0] << ", " << unflat_dim[1] << ", " << unflat_dim[2] << ", "<<values.data(k,b)<<std::endl;
         }
 
@@ -197,18 +198,19 @@ int main(int argc, char* argv[])
 
     // Init params from input data (must fill input->domain first)
     std::cout<<"Starting to init_params"<<std::endl;
-    input->init_params();   
+    input.init_params();   
 
     // Construct the MFA object
     std::cout<<"Starting to construct_MFA"<<std::endl;
     //this->setup_MFA(cp, mfa_info);
-    mfa::MFA<double> * tmfa = new mfa::MFA<double>(mfa_info);
+    //mfa::MFA<double> * tmfa = new mfa::MFA<double>(mfa_info);
+    mfa::MFA<double>  tmfa(mfa_info);
     double t3 = MPI_Wtime();
     std::cout << "took: " << t3-t1 << " seconds" << std::endl;
     std::cout << "fixed encode block" << std::endl;
     double t4 = MPI_Wtime();
     //b->fixed_encode_block(cp, mfa_info);
-    tmfa->FixedEncode(*input, mfa_info.regularization, mfa_info.reg1and2, mfa_info.weighted, false);
+    tmfa.FixedEncode(input, mfa_info.regularization, mfa_info.reg1and2, mfa_info.weighted, false);
     double t5 = MPI_Wtime();
     std::cout << "took: " << t5-t4 << " seconds" << std::endl;
     //std::cout << "range error" << std::endl;
@@ -234,7 +236,7 @@ int main(int argc, char* argv[])
 
     double t10 = MPI_Wtime();
     // b->decode_point(*cp, in_param, out_pt);
-    tmfa->Decode(in_param, out_pt);
+    tmfa.Decode(in_param, out_pt);
     double t11 = MPI_Wtime();
 
     std::cout << "time to decode a single point: " << t11-t10 <<" seconds? "<< std::endl;
