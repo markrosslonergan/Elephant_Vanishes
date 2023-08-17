@@ -120,13 +120,11 @@ int main(int argc, char* argv[])
     app.add_option("-v,--verbosity", GLOBAL_LEVEL, "Verbosity Level [1-4].");
     CLI11_PARSE(app, argc, argv);
 
-
     //Some DIY MPI setup. 
-
 
     //Some core inputs
     int mfadim = 1; //Dimension of the MFA model (input)
-    int nBins = 20; //Dimension of output of MFA? I believe so 
+    int nBins = 200; //Dimension of output of MFA? I believe so 
     int degree = 2;//Science degree? Not sure... polynomial degree?
     int pt_dim       = nBins+mfadim;        // dimension of input points
 
@@ -180,7 +178,6 @@ int main(int argc, char* argv[])
     //mfa::PointSet<double> * input = new mfa::PointSet<double>(mfadim, mfa_info.model_dims(), ndom_pts.prod(), ndom_pts);
 
     for(size_t k = 0; k< values.size; k++){
-
         //For this point, whats the dimensions it correlated to?
         std::vector<int> unflat_dim = values.unflatten(k);
 
@@ -203,14 +200,14 @@ int main(int argc, char* argv[])
     // Construct the MFA object
     std::cout<<"Starting to construct_MFA"<<std::endl;
     //this->setup_MFA(cp, mfa_info);
-    //mfa::MFA<double> * tmfa = new mfa::MFA<double>(mfa_info);
-    mfa::MFA<double>  tmfa(mfa_info);
+    mfa::MFA<double> * tmfa = new mfa::MFA<double>(mfa_info);
+    //mfa::MFA<double>  tmfa(mfa_info);
     double t3 = MPI_Wtime();
     std::cout << "took: " << t3-t1 << " seconds" << std::endl;
     std::cout << "fixed encode block" << std::endl;
     double t4 = MPI_Wtime();
     //b->fixed_encode_block(cp, mfa_info);
-    tmfa.FixedEncode(input, mfa_info.regularization, mfa_info.reg1and2, mfa_info.weighted, false);
+    tmfa->FixedEncode(input, mfa_info.regularization, mfa_info.reg1and2, mfa_info.weighted, false);
     double t5 = MPI_Wtime();
     std::cout << "took: " << t5-t4 << " seconds" << std::endl;
     //std::cout << "range error" << std::endl;
@@ -236,7 +233,7 @@ int main(int argc, char* argv[])
 
     double t10 = MPI_Wtime();
     // b->decode_point(*cp, in_param, out_pt);
-    tmfa.Decode(in_param, out_pt);
+    tmfa->Decode(in_param, out_pt);
     double t11 = MPI_Wtime();
 
     std::cout << "time to decode a single point: " << t11-t10 <<" seconds? "<< std::endl;
