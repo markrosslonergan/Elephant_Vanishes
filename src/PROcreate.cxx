@@ -66,7 +66,7 @@ namespace PROfit {
         return;
     }
 
-    int PROcess_SBNfit(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector){
+int PROcess_SBNfit(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector){
  
     log<LOG_DEBUG>(L"%1% || Starting to construct CovarianceMatrixGeneration in EventWeight Mode  ") % __func__ ;
 
@@ -781,99 +781,5 @@ void process_sbnfit_event(const PROconfig &inconfig, const std::shared_ptr<Branc
 }
 
 
-Eigen::MatrixXd SystStruct::GenerateCovarMatrix(const SystStruct& sys_obj){
-    int n_universe = sys_obj.GetNUniverse(); 
-    std::string sys_name = sys_obj.GetSysName();
-    
-    const PROspec& cv_spec = sys_obj.CV();
-    int nbins = cv_spec.GetNbins();
-    log<LOG_INFO>(L"%1% || Generating covariance matrix.. size: %2% x %3%") % __func__ % nbins % nbins;
-
-    //build full covariance matrix 
-    Eigen::MatrixXd full_covar_matrix = Eigen::MatrixXd::Zero(nbins, nbins);
-    for(int i = 0; i != n_universe; ++i){
-	PROspec spec_diff  = cv_spec - sys_obj.Variation(i);
-	full_covar_matrix += (spec_diff.Spec() * spec_diff.Spec().transpose() ) / static_cast<double>(n_universe);
-    }
- 
-    //build fractional covariance matrix 
-    //first, get the matrix with diagonal being reciprocal of CV spectrum prdiction
-    Eigen::MatrixXd cv_spec_matrix =  Eigen::MatrixXd::Identity(nbins, nbins);
-    for(int i =0; i != nbins; ++i)
-	cv_spec_matrix(i, i) = 1.0/cv_spec.GetBinContent(i);
-
-    //second, get fractioal covar
-    Eigen::MatrixXd frac_covar_matrix = cv_spec_matrix * full_covar_matrix * cv_spec_matrix;
-
-    return frac_covar_matrix;
-}
-
-Eigen::MatrixXd SystStruct::GenerateCovarMatrix() const{
-    
-    int nbins = p_cv->GetNbins();
-    log<LOG_INFO>(L"%1% || Generating covariance matrix.. size: %2% x %3%") % __func__ % nbins % nbins;
-
-    //build full covariance matrix 
-    Eigen::MatrixXd full_covar_matrix = Eigen::MatrixXd::Zero(nbins, nbins);
-    for(int i = 0; i != n_univ; ++i){
-	PROspec spec_diff  = *p_cv - *(p_multi_spec.at(i));
-	full_covar_matrix += (spec_diff.Spec() * spec_diff.Spec().transpose() ) / static_cast<double>(n_univ);
-    }
- 
-    //build fractional covariance matrix 
-    //first, get the matrix with diagonal being reciprocal of CV spectrum prdiction
-    Eigen::MatrixXd cv_spec_matrix =  Eigen::MatrixXd::Identity(nbins, nbins);
-    for(int i =0; i != nbins; ++i)
-	cv_spec_matrix(i, i) = 1.0/p_cv->GetBinContent(i);
-
-    //second, get fractioal covar
-    Eigen::MatrixXd frac_covar_matrix = cv_spec_matrix * full_covar_matrix * cv_spec_matrix;
-
-    return frac_covar_matrix;
-}
-
-bool SystStruct::isPositiveSemiDefinite(const Eigen::MatrixXd& in_matrix){
-
-    //first, check if it's symmetric 
-    if(!in_matrix.isApprox(in_matrix.transpose(), Eigen::NumTraits<double>::dummy_precision())){
-	log<LOG_ERROR>(L"%1% || Covariance matrix is not symmetric, with tolerance of %2%") % __func__ % Eigen::NumTraits<double>::dummy_precision();
-	return false;
-    }
-
-    //second, check if it's positive semi-definite;
-    Eigen::LDLT<Eigen::MatrixXd> llt(in_matrix);
-    if((llt.info() == Eigen::NumericalIssue ) || (!llt.isPositive()) )
-	return false;
-
-    return true;
-
-}
-
-bool SystStruct::isPositiveSemiDefinite_WithTolerance(const Eigen::MatrixXd& in_matrix, double tolerance ){
-
-    //first, check if it's symmetric 
-    if(!in_matrix.isApprox(in_matrix.transpose(), Eigen::NumTraits<double>::dummy_precision())){
-	log<LOG_ERROR>(L"%1% || Covariance matrix is not symmetric, with tolerance of %2%") % __func__ % Eigen::NumTraits<double>::dummy_precision();
-	return false;
-    }
-   
-
-    //second, check if it's positive semi-definite;
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigensolver(in_matrix);
-    if(eigensolver.info() != Eigen::Success){
-	log<LOG_ERROR>(L"%1% || Failing to get eigenvalues..") % __func__ ;
-	return false;
-    }
-   
-    Eigen::VectorXd eigenvals = eigensolver.eigenvalues();
-    for(auto val : eigenvals ){
-	if(val < 0 && fabs(val) > tolerance){
-	   log<LOG_ERROR>(L"%1% || Found negative eigenvalues beyond tolerance (%2%): %3%") % __func__ % tolerance % val;
-	   return false;
-	}
-    }
-    return true;
-
-}
 }//namespace
 

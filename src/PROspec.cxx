@@ -203,10 +203,8 @@ PROspec& PROspec::operator*=(double scale){
 
 Eigen::VectorXd PROspec::eigenvector_sqrt_quadrature_sum(const Eigen::VectorXd& a, const Eigen::VectorXd& b) const{
     int nbin = a.size();
-    Eigen::VectorXd error_spec = Eigen::VectorXd::Zero(nbin);
-    for(int i = 0; i != nbin; ++i){
-	error_spec(i) = sqrt(pow(a(i), 2.0) + pow(b(i), 2.0));
-    }
+    Eigen::VectorXd error_spec = Eigen::VectorXd::Zero(nbin); 
+    error_spec = ((a.array()).square() + (b.array()).square()).sqrt();
     return error_spec;
 }
 

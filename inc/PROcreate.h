@@ -86,24 +86,6 @@ namespace PROfit{
 	/*Function: return the spectrum for variation at given universe */
 	const PROspec& Variation(int universe) const;
 
-
-	//----- Spline and Covariance matrix related ---
-	//----- Spline and Covariance matrix related ---
-
-	/* Function: generate covariance matrix using cv and multi-universe spectra stored */	
-        Eigen::MatrixXd GenerateCovarMatrix() const;
-
-        /* Function: given a syst struct with cv and variation spectra, build fractional covariance matrix for the systematics, and return it. */ 
-        static Eigen::MatrixXd GenerateCovarMatrix(const SystStruct& sys_obj);
-
-
-
-        /* Function: check if given matrix is positive semi-definite with tolerance. UST THIS ONE!!*/
-	static bool isPositiveSemiDefinite_WithTolerance(const Eigen::MatrixXd& in_matrix, double tolerance=1.0e-16);
-
-        /* Function: check if given matrix is positive semi-definite, no tolerance at all (besides precision error from Eigen) */
-	static bool isPositiveSemiDefinite(const Eigen::MatrixXd& in_matrix);
-
 	//---------- Helper Functions --------
 	//---------- Helper Functions --------
 	

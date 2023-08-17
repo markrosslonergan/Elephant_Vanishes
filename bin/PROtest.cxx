@@ -1,6 +1,7 @@
 #include "PROconfig.h"
 #include "PROspec.h"
 #include "PROcreate.h"
+#include "PROsyst.h"
 #include "sbnanaobj/StandardRecord/SRGlobal.h"
 #include "sbnanaobj/StandardRecord/SRWeightPSet.h"
 
@@ -38,12 +39,12 @@ int main(int argc, char* argv[])
     std::cout << syst_vector.size() << std::endl;
 
     //generate covariance matrix 
-    Eigen::MatrixXd fractional_matrix = SystStruct::GenerateCovarMatrix(syst_vector[0]);
+    Eigen::MatrixXd fractional_matrix = PROsyst::GenerateFracCovarMatrix(syst_vector[0]);
     std::cout << " Formed fractional covariance matrix by PROfit: " << std::endl; 
     std::cout << fractional_matrix << std::endl;
 
     //check is matrix is psd
-    bool res1 =  SystStruct::isPositiveSemiDefinite(fractional_matrix), res2 = SystStruct::isPositiveSemiDefinite_WithTolerance(fractional_matrix);
+    bool res1 =  PROsyst::isPositiveSemiDefinite(fractional_matrix), res2 = PROsyst::isPositiveSemiDefinite_WithTolerance(fractional_matrix);
     std::cout << "Matrix is positive semidefinite? " << res1 << " " << res2 << std::endl;
 
 
@@ -51,13 +52,13 @@ int main(int argc, char* argv[])
     matrix1 << 3,2,1,2,3,1,1,2,3;
     matrix2 << 1, 2, 2, 3;
     matrix3 << 1, 2, 2, 4;
-    res1 =  SystStruct::isPositiveSemiDefinite(matrix1), res2 = SystStruct::isPositiveSemiDefinite_WithTolerance(matrix1);
+    res1 =  PROsyst::isPositiveSemiDefinite(matrix1), res2 = PROsyst::isPositiveSemiDefinite_WithTolerance(matrix1);
     std::cout << "Matrix1 is positive semidefinite? " << res1 << " " << res2 <<  std::endl;
     std::cout << matrix1 << std::endl;
-    res1 =  SystStruct::isPositiveSemiDefinite(matrix2), res2 = SystStruct::isPositiveSemiDefinite_WithTolerance(matrix2);
+    res1 =  PROsyst::isPositiveSemiDefinite(matrix2), res2 = PROsyst::isPositiveSemiDefinite_WithTolerance(matrix2);
     std::cout << "Matrix2 is positive semidefinite? " << res1 << " " << res2 <<  std::endl;
     std::cout << matrix2 << std::endl;
-    res1 =  SystStruct::isPositiveSemiDefinite(matrix3), res2 = SystStruct::isPositiveSemiDefinite_WithTolerance(matrix3);
+    res1 =  PROsyst::isPositiveSemiDefinite(matrix3), res2 = PROsyst::isPositiveSemiDefinite_WithTolerance(matrix3);
     std::cout << "Matrix3 is positive semidefinite? " << res1 << " " << res2 <<  std::endl;
     std::cout << matrix3 << std::endl;
    
