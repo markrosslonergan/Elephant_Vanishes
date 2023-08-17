@@ -104,16 +104,6 @@ namespace PROfit{
         /* Function: check if given matrix is positive semi-definite, no tolerance at all (besides precision error from Eigen) */
 	static bool isPositiveSemiDefinite(const Eigen::MatrixXd& in_matrix);
 
-    
-	/* Function: Fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
-    	void FillSpline();
-
-    	/* Function: Get weight for bin for a given shift using spline */
-    	double GetSplineShift(int bin, double shift);
-
-    	/* Function: Get cv spectrum shifted using spline */
-    	PROspec GetSplineShiftedSpectrum(double shift);
-
 	//---------- Helper Functions --------
 	//---------- Helper Functions --------
 	
