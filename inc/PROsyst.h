@@ -1,20 +1,15 @@
 #ifndef PROSYST_H_
 #define PROSYST_H_
 
-<<<<<<< HEAD
-#include "PROcreate.h"
-#include "PROmfa.h"
-=======
 //C++ include 
 #include <string>
->>>>>>> feature/systematics_spectra
 #include <vector>
 #include <unordered_map>
 
 // Our include
 #include "PROcreate.h"
 #include "PROlog.h"
-
+#include "PROmfa.h"
 namespace PROfit {
 
 class PROsyst {
@@ -66,23 +61,11 @@ public:
         /* Function: check if given matrix is positive semi-definite, no tolerance at all (besides precision error from Eigen) */
 	static bool isPositiveSemiDefinite(const Eigen::MatrixXd& in_matrix);
 
-<<<<<<< HEAD
-   	/* function: fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
-   	void fillspline(const syststruct& syst);
-
-   	/* function: get weight for bin for a given shift using spline */
+   	   	/* function: get weight for bin for a given shift using spline */
    	float getsplineshift(std::string name, float shift, int bin);
-
-    /* function: fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
-   	void fillspline(const syststruct& syst);
-
-   	/* function: get weight for bin for a given shift using spline */
-   	float getsplineshift(std::string name, float shift, int bin);
-=======
     
    	/* Function: Fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
    	void FillSpline(const SystStruct& syst);
->>>>>>> feature/systematics_spectra
 
 
   	/* Function: Get cv spectrum shifted using spline */
@@ -91,16 +74,10 @@ public:
 
 
 private:
-<<<<<<< HEAD
-    std::map<std::string, Spline> splines;
-    std::map<std::string, Eigen::MatrixXd> covmats;
-    std::<std:string, mfa::MFA<double> *> mfas;
-=======
     std::unordered_map<std::string, Spline> splines;
     std::unordered_map<std::string, Eigen::MatrixXd> covmat_map;
     std::unordered_map<std::string, Eigen::MatrixXd> corrmat_map;
-    //std::<std:string, MFA> mfa;
->>>>>>> feature/systematics_spectra
+    std::<std:string, mfa::MFA<double> *> mfas;
 };
 
 };
