@@ -62,7 +62,7 @@ public:
 	static bool isPositiveSemiDefinite(const Eigen::MatrixXd& in_matrix);
 
    	   	/* function: get weight for bin for a given shift using spline */
-   	float getsplineshift(std::string name, float shift, int bin);
+   	float GetSplineShift(std::string name, float shift, int bin);
     
    	/* Function: Fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
    	void FillSpline(const SystStruct& syst);
@@ -73,11 +73,14 @@ public:
     PROspec GetSplineShiftedSpectrum(const PROspec& cv, std::vector<std::string> names, std::vector<float> shifts);
 
 
+    void FillMFA(const SystStruct& syst);
+    PROspec GetMFAShiftedSpectrum(const PROspec& cv, std::string name, float shift);
+
 private:
     std::unordered_map<std::string, Spline> splines;
     std::unordered_map<std::string, Eigen::MatrixXd> covmat_map;
     std::unordered_map<std::string, Eigen::MatrixXd> corrmat_map;
-    std::<std:string, mfa::MFA<double> *> mfas;
+    std::unordered_map<std::string, mfa::MFA<double> *> mfas;
 };
 
 };

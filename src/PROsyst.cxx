@@ -298,5 +298,47 @@ bool PROsyst::isPositiveSemiDefinite_WithTolerance(const Eigen::MatrixXd& in_mat
         }
         return ret;
     }
+
+    /***************************** MFA MFA MFA Simple Simple **********************************
+     *
+     *****************************************************************************************/
+    
+    void PROsyst::FillMFA(const SystStruct& syst) {
+        std::vector<PROspec> ratios;
+        ratios.reserve(syst.p_multi_spec.size());
+        for(size_t i = 0; i < syst.p_multi_spec.size(); ++i) {
+            ratios.push_back(*syst.p_multi_spec[i] / *syst.p_cv);
+            if(syst.knobval[i] == -1) ratios.push_back(*syst.p_cv / *syst.p_cv);
+        }
+        /* 
+         *
+         */
+
+    }
+
+
+  PROspec PROsyst::GetMFAShiftedSpectrum(const PROspec& cv, std::string name, float shift) {
+        assert(cv.GetNbins() == splines[name].size());
+        PROspec ret(cv.GetNbins());
+        for(int i = 0; i < cv.GetNbins(); ++i)
+            //ret.Fill(i, GetSplineShift(name, shift, i) * cv.GetBinContent(i));
+        return ret;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 };
 
