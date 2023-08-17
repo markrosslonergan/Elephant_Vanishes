@@ -126,9 +126,9 @@ int main(int argc, char* argv[])
 
 
     //Some core inputs
-    int mfadim = 5; //Dimension of the MFA model (input)
-    int nBins = 2000; //Dimension of output of MFA? I believe so 
-    int degree = 3;//Science degree? Not sure... polynomial degree?
+    int mfadim = 1; //Dimension of the MFA model (input)
+    int nBins = 20; //Dimension of output of MFA? I believe so 
+    int degree = 2;//Science degree? Not sure... polynomial degree?
     int pt_dim       = nBins+mfadim;        // dimension of input points
 
     std::vector<int> ncontrol_pts(mfadim); // mfadim each has dim 7 for +/-1,2,3 sigma and CV
