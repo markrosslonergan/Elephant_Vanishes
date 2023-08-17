@@ -2,13 +2,13 @@
 
 namespace PROfit{
 
-long int FindGlobalBin(const PROconfig &inconfig, double reco_value, const std::string& subchannel_fullname){
+int FindGlobalBin(const PROconfig &inconfig, double reco_value, const std::string& subchannel_fullname){
     int subchannel_index = inconfig.GetSubchannelIndex(subchannel_fullname);
     return FindGlobalBin(inconfig, reco_value, subchannel_index);
 }
 
-long int FindGlobalBin(const PROconfig &inconfig, double reco_value, int subchannel_index){
-    long int global_bin_start = inconfig.GetGlobalBinStart(subchannel_index);
+int FindGlobalBin(const PROconfig &inconfig, double reco_value, int subchannel_index){
+    int global_bin_start = inconfig.GetGlobalBinStart(subchannel_index);
     int channel_index = inconfig.GetChannelIndex(subchannel_index);
     int local_bin = FindLocalBin(inconfig, reco_value, channel_index);
     return local_bin == -1 ? -1 : global_bin_start + local_bin;

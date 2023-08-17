@@ -23,8 +23,8 @@ namespace PROfit{
      * Note: bin index start from 0, not 1
      * Note: if  the reco value is out of range, then return value of -1
      */
-    long int FindGlobalBin(const PROconfig &inconfig, double reco_value, int subchannel_index);
-    long int FindGlobalBin(const PROconfig &inconfig, double reco_value, const std::string& subchannel_fullname);
+    int FindGlobalBin(const PROconfig &inconfig, double reco_value, int subchannel_index);
+    int FindGlobalBin(const PROconfig &inconfig, double reco_value, const std::string& subchannel_fullname);
 
 
 

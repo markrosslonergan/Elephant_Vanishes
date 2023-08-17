@@ -736,7 +736,7 @@ int PROconfig::GetChannelIndex(int subchannel_index) const{
     return pos_iter->second;
 }
 
-long int PROconfig::GetGlobalBinStart(int subchannel_index) const{
+int PROconfig::GetGlobalBinStart(int subchannel_index) const{
     auto pos_iter = m_map_subchannel_index_to_global_index_start.find(subchannel_index);
     if(pos_iter == m_map_subchannel_index_to_global_index_start.end()){
        log<LOG_ERROR>(L"%1% || Subchannel index: %2% does not exist in the subchannel-globalbin map!") % __func__ % subchannel_index;
@@ -991,18 +991,18 @@ void PROconfig::generate_index_map(){
     int global_subchannel_index = 0;
     for(int im = 0; im < m_num_modes; im++){
 
-        long int mode_bin_start = im*m_num_bins_mode_block;
+        int mode_bin_start = im*m_num_bins_mode_block;
 
         for(int id =0; id < m_num_detectors; id++){
 
-            long int detector_bin_start = id*m_num_bins_detector_block;
-            long int channel_bin_start = 0;
+            int detector_bin_start = id*m_num_bins_detector_block;
+            int channel_bin_start = 0;
 
             for(int ic = 0; ic < m_num_channels; ic++){
                 for(int sc = 0; sc < m_num_subchannels[ic]; sc++){
 
                     std::string temp_name  = m_mode_names[im] +"_" +m_detector_names[id]+"_"+m_channel_names[ic]+"_"+m_subchannel_names[ic][sc];
-                    long int global_bin_index = mode_bin_start + detector_bin_start + channel_bin_start + sc*m_channel_num_bins[ic];
+                    int global_bin_index = mode_bin_start + detector_bin_start + channel_bin_start + sc*m_channel_num_bins[ic];
 
 		    m_map_fullname_subchannel_index[temp_name] = global_subchannel_index;
                     m_map_subchannel_index_to_global_index_start[global_subchannel_index] = global_bin_index;

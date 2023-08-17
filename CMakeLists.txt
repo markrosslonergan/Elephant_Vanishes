@@ -16,8 +16,6 @@ message("MPI_ENABLE IS SET TO ${MPI_ENABLE}")
 
 set(CMAKE_CXX_FLAGS "-g -O3 -Wall -Wextra")
 
-
-
 #Allow for nice support folders in IDEs like VScode
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -28,8 +26,6 @@ if(Doxygen_FOUND)
 else()
     message(STATUS "Doxygen not found, not building docs")
 endif()
-
-
 
 ##### Some Dependancies ######
 
@@ -97,12 +93,19 @@ if(MPI_ENABLE)
 
 endif(MPI_ENABLE)
 
-
 #this is a bit mesier but works
 execute_process(COMMAND git clone -b v09_20_05 https://github.com/SBNSoftware/sbnanaobj.git ${CMAKE_BINARY_DIR}/_deps/sbnanaobj-src )
 set(SBNANAOBJ_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/sbnanaobj-src/")
 
+execute_process(COMMAND git clone -b v2.7.1 https://github.com/BlueBrain/HighFive.git ${CMAKE_BINARY_DIR}/_deps/highfive-src )
+set(HIGHFIVE_INCLUDE_DIR "${CMAKE_BINARY_DIR}/_deps/highfive-src/include/")
 
+find_package(HDF5 REQUIRED)
+if(HDF5_FOUND)
+    include_directories (SYSTEM ${HDF5_INCLUDE_DIR})
+    message("HDF5 Libraries ${HDF5_LIBRARIES}")
+    link_libraries(${HDF5_LIBRARIES})
+endif()
 
 find_package(Boost REQUIRED)
 if(Boost_FOUND)
@@ -139,15 +142,11 @@ target_include_directories(PROfit_dict PRIVATE ${SBNANAOBJ_INCLUDE_DIR})
 target_link_directories(PROfit_dict PRIVATE ${CMAKE_BINARY_DIR})
 target_link_libraries(PROfit_dict PRIVATE ${ROOT_LIBRARIES})
 
-
-
 # The compiled library code lives inside here
 add_subdirectory(src)
 
 # The executable code will be placed here
 add_subdirectory(bin)
-
-
 
 #This works, but only runs at make not cmake ..
 #set_property(DIRECTORY PROPERTY EP_UPDATE_DISCONNECTED true)
@@ -162,5 +161,3 @@ add_subdirectory(bin)
 #    INSTALL_DIR ${CMAKE_BINARY_DIR}/_deps/sbnanaobj-inc
 #    GIT_SHALLOW ON
 #)
-
-

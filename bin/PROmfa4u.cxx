@@ -1,6 +1,5 @@
 #include "PROconfig.h"
 #include "PROspec.h"
-#include "PROcovariancegen.h"
 
 #include <algorithm>
 #include <limits>
