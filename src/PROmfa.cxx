@@ -1,6 +1,4 @@
-#include "PROconfig.h"
-#include <mfa/mfa.hpp>
-#include <mfa/block_base.hpp>
+#include "PROmfa.h"
 
 using namespace PROfit;
 

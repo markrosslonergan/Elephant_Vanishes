@@ -2,7 +2,7 @@
 #define PROSYST_H_
 
 #include "PROcreate.h"
-
+#include "PROmfa.h"
 #include <vector>
 
 namespace PROfit {
@@ -13,11 +13,18 @@ public:
 
     PROsyst(const std::vector<SystStruct>& systs);
 
-   	/* Function: Fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
-   	void FillSpline(const SystStruct& syst);
+   	/* function: fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
+   	void fillspline(const syststruct& syst);
 
-   	/* Function: Get weight for bin for a given shift using spline */
-   	float GetSplineShift(std::string name, float shift, int bin);
+   	/* function: get weight for bin for a given shift using spline */
+   	float getsplineshift(std::string name, float shift, int bin);
+
+    /* function: fill spline_coeffs assuming p_cv and p_multi_spec have been filled */
+   	void fillspline(const syststruct& syst);
+
+   	/* function: get weight for bin for a given shift using spline */
+   	float getsplineshift(std::string name, float shift, int bin);
+
 
   	/* Function: Get cv spectrum shifted using spline */
   	PROspec GetSplineShiftedSpectrum(const PROspec& cv, std::string name, float shift);
@@ -27,7 +34,7 @@ public:
 private:
     std::map<std::string, Spline> splines;
     std::map<std::string, Eigen::MatrixXd> covmats;
-    //std::<std:string, MFA> mfa;
+    std::<std:string, mfa::MFA<double> *> mfas;
 };
 
 };

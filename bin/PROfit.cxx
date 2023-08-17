@@ -61,10 +61,10 @@ int main(int argc, char* argv[])
 
     std::vector<SystStruct> systs;
     PROcess_CAFana(myConf, systs);
-    systs[0].FillSpline();
-    systs[0].CV().Print();
-    PROspec p05 = systs[0].GetSplineShiftedSpectrum(0.5);
-    p05.Print();
+    //systs[0].FillSpline();
+    //systs[0].CV().Print();
+    //PROspec p05 = systs[0].GetSplineShiftedSpectrum(0.5);
+    //p05.Print();
     //PROspec mySpec(myConf);
     //TH1D hmm = mySpec.toTH1D(myConf);
 
