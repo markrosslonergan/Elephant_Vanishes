@@ -53,6 +53,15 @@ namespace PROfit{
 
     /* Function: given a full vector (that contains reco), collapse the vector */
     Eigen::VectorXd CollapseMatrix(const PROconfig &inconfig, const Eigen::VectorXd& full_vector);
+
+    /* Function: given a full matrix, collapse the matrix (For loop version from SBNfit)  */
+    Eigen::MatrixXd CollapseMatrix2(const PROconfig &inconfig, const Eigen::MatrixXd& full_matrix);
+
+    /* Function: given a full vector (that contains reco), collapse the vector (For loop version from SBNfit )*/
+    Eigen::VectorXd CollapseMatrix2(const PROconfig &inconfig, const Eigen::VectorXd& full_vector);
+
+    Eigen::MatrixXd CollapseSubchannels(const PROconfig &inconfig, const Eigen::MatrixXd& full_matrix);
+    Eigen::MatrixXd CollapseDetectors(const PROconfig &inconfig, const Eigen::MatrixXd& full_matrix);
 };
 
 #endif
