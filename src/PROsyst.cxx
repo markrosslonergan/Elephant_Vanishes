@@ -95,18 +95,24 @@ namespace PROfit {
         Eigen::MatrixXd full_covar_matrix = Eigen::MatrixXd::Zero(nbins, nbins);
         for(int i = 0; i != n_universe; ++i){
             PROspec spec_diff  = cv_spec - sys_obj.Variation(i);
+        log<LOG_DEBUG>(L"%1% || Check univdrse %2%") % __func__ % i;
             full_covar_matrix += (spec_diff.Spec() * spec_diff.Spec().transpose() ) / static_cast<double>(n_universe);
         }
 
         //build fractional covariance matrix 
         //first, get the matrix with diagonal being reciprocal of CV spectrum prdiction
         Eigen::MatrixXd cv_spec_matrix =  Eigen::MatrixXd::Identity(nbins, nbins);
-        for(int i =0; i != nbins; ++i)
+        for(int i =0; i != nbins; ++i){
+	double pred = cv_spec.GetBinContent(i);
+	   log<LOG_DEBUG>(L"%1% || CV prediction at bin %2% is %3% ") % __func__ % i % pred ; 
             cv_spec_matrix(i, i) = 1.0/cv_spec.GetBinContent(i);
+ 	}
 
+	log<LOG_DEBUG>(L"%1%  || check %2% ") % __func__ % __LINE__;
         //second, get fractioal covar
         Eigen::MatrixXd frac_covar_matrix = cv_spec_matrix * full_covar_matrix * cv_spec_matrix;
 
+	log<LOG_DEBUG>(L"%1%  || check %2% ") % __func__ % __LINE__;
 
         //check if it's good
         if(!PROsyst::isPositiveSemiDefinite_WithTolerance(frac_covar_matrix)){
@@ -115,9 +121,11 @@ namespace PROfit {
             exit(EXIT_FAILURE);
         }
 
+	log<LOG_DEBUG>(L"%1%  || check %2% ") % __func__ % __LINE__;
         //zero out nans 
         PROsyst::toFiniteMatrix(frac_covar_matrix);
 
+	log<LOG_DEBUG>(L"%1%  || check %2% ") % __func__ % __LINE__;
         return frac_covar_matrix;
     }
 
