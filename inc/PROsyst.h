@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <cmath>
 
 // Our include
 #include "PROcreate.h"
@@ -40,11 +41,20 @@ namespace PROfit {
             Eigen::MatrixXd SumMatrices() const;
             Eigen::MatrixXd SumMatrices(const std::vector<std::string>& sysnames) const;
 
+            /* Function: given a SystStruct with cv and variation spectra, build full covariance matrix for the systematics, and return it
+            * Note: it assumes the SystStruct is filled 
+            */
+            static Eigen::MatrixXd GenerateFullCovarMatrix(const SystStruct& sys_obj);
+
+            /* Function: given a SystStruct with cv and variation spectra, build fractional covariance matrix for the systematics, and return it
+            * Note: it assumes the SystStruct is filled 
+             */
+            static Eigen::MatrixXd GenerateFracCovarMatrix(const SystStruct& sys_obj);
+
             /* Function: Given a SystStruct, generate fractinal covariance matrix, and correlation matrix, and add matrices to covmat_map and corrtmat_map
              * Note: this function is lazy. It wouldn't do anything if it found covariance matrix with the same name already in the map.
              */
             void CreateMatrix(const SystStruct& syst);
-
 
             /* Function: given a syst struct with cv and variation spectra, build fractional covariance matrix for the systematics, as well as correlation matrix 
              * Return: {fractional covariance matrix, correlation covariance matrix}
@@ -85,6 +95,8 @@ namespace PROfit {
             PROspec GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::string name, float shift);
             PROspec GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::vector<std::string> names, std::vector<float> shifts);
 
+            /* the fractional covariance that is the sum of all during constructor*/
+            Eigen::MatrixXd fractional_covariance;
 
         private:
             std::unordered_map<std::string, std::pair<size_t, SystType>> syst_map;

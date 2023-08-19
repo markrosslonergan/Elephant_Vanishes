@@ -66,46 +66,29 @@ int main(int argc, char* argv[])
     std::vector<SystStruct> systsstructs;
     PROcess_CAFs(myConf, systsstructs, myprop);
     PROsyst systs(systsstructs);
-    PROsc myosc;
-    PROspec myfittingspec;
-
-    std::vector<float> myvec;
-    myvec.push_back(0.5);    
-
-    std::vector<float> fitparams;
-    fitparams.push_back(1.0);
-    fitparams.push_back(0.3);
-
-    myfittingspec = FillRecoSpectra(myConf, myprop, systs, myosc, myvec, fitparams);
-    myfittingspec.Print();
-    //PROspec p05 = systs.GetSplineShiftedSpectrum(myConf, myprop, "GENIEReWeight_ICARUS_v1_multisigma_MaCCRES", .5);
-    //p05.Print();
-    //std::cout << systs.GrabMatrix("piplus_Flux") << std::endl;
-
-    //PROspec mySpec(myConf);
-    //TH1D hmm = mySpec.toTH1D(myConf);
-
-
-    return 0;
-
     PROsc osc;
+
+
 
     LBFGSpp::LBFGSBParam<double> param;  
     param.epsilon = 1e-6;
     param.max_iterations = 100;
     LBFGSpp::LBFGSBSolver<double> solver(param); 
 
-    int dim = 2+5; //systs.GetNumSplines();
+    Eigen::VectorXd data = systsstructs.back().CV().Spec();
+    std::cout<<"Data: "<<data<<std::endl;
 
-    PROchi chi("3plus1",&myConf,&myprop,&systs,&osc);
+    PROchi chi("3plus1",&myConf,&myprop,&systs,&osc, systsstructs.back().CV());
 
     // Bounds
-    Eigen::VectorXd lb = Eigen::VectorXd::Constant(dim, 0.0);
-    Eigen::VectorXd ub = Eigen::VectorXd::Constant(dim, std::numeric_limits<double>::infinity());
+    Eigen::VectorXd lb(3);
+    lb << 0.01 , 0  , -3;
+    Eigen::VectorXd ub(3);
+    ub <<  100, 1, 3 ;
 
     // Initial guess
-    Eigen::VectorXd x = Eigen::VectorXd::Constant(dim, 1.0);
-
+    Eigen::VectorXd x(3);
+    x << 3, 0.5, 0.0;
 
     // x will be overwritten to be the best point found
     double fx;

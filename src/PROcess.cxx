@@ -3,7 +3,7 @@
 
 namespace PROfit {
 
-PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, PROsc &inosc, std::vector<float> &inshifts, std::vector<float> &physparams){
+PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, const PROsc &inosc, std::vector<float> &inshifts, std::vector<float> &physparams){
 
     PROspec myspectrum(inconfig.m_num_bins_total);
 
@@ -28,7 +28,7 @@ PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, cons
 
 }
 
-float GetOscWeight(int ev_idx, const PROpeller &inprop, PROsc &inosc, std::vector<float> &inphysparams){
+float GetOscWeight(int ev_idx, const PROpeller &inprop, const PROsc &inosc, std::vector<float> &inphysparams){
 
         //get subchannel here from pdg. this will be added when we agree on convention.
         //for now everything is numu disappearance 3+1. 

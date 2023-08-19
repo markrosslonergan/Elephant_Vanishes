@@ -1222,6 +1222,5 @@ void PROconfig::construct_collapsing_matrix(){
 	     collapsing_matrix(Eigen::seqN(row_block_start, m_num_bins_detector_block), Eigen::seqN(col_block_start, m_num_bins_detector_block_collapsed)) = block_collapser;
 	}
     }
-
     return;
 }

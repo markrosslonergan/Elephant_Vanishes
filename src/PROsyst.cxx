@@ -13,7 +13,9 @@ namespace PROfit {
                 this->CreateMatrix(syst);
             }
         }
+        fractional_covariance = this->SumMatrices();
     }
+
 
     Eigen::MatrixXd PROsyst::SumMatrices() const{
 
@@ -83,7 +85,7 @@ namespace PROfit {
         return std::pair<Eigen::MatrixXd, Eigen::MatrixXd>({frac_covar_matrix, corr_covar_matrix});
     }
 
-    Eigen::MatrixXd PROsyst::GenerateFracCovarMatrix(const SystStruct& sys_obj){
+    Eigen::MatrixXd PROsyst::GenerateFullCovarMatrix(const SystStruct& sys_obj){
         int n_universe = sys_obj.GetNUniverse(); 
         std::string sys_name = sys_obj.GetSysName();
 
@@ -99,8 +101,17 @@ namespace PROfit {
             full_covar_matrix += (spec_diff.Spec() * spec_diff.Spec().transpose() ) / static_cast<double>(n_universe);
         }
 
+	return full_covar_matrix;
+    }
+
+    Eigen::MatrixXd PROsyst::GenerateFracCovarMatrix(const SystStruct& sys_obj){
+
+        //build full covariance matrix 
+        Eigen::MatrixXd full_covar_matrix = PROsyst::GenerateFullCovarMatrix(sys_obj);
+
         //build fractional covariance matrix 
         //first, get the matrix with diagonal being reciprocal of CV spectrum prdiction
+        const PROspec& cv_spec = sys_obj.CV();
         Eigen::MatrixXd cv_spec_matrix =  Eigen::MatrixXd::Identity(nbins, nbins);
         for(int i =0; i != nbins; ++i){
 	double pred = cv_spec.GetBinContent(i);
@@ -133,13 +144,19 @@ namespace PROfit {
         int nbins = frac_matrix.rows();
         Eigen::MatrixXd corr_covar_matrix = frac_matrix;
 
-        Eigen::MatrixXd error_reciprocal_matrix = Eigen::MatrixXd::Identity(nbins, nbins);
+        Eigen::MatrixXd error_reciprocal_matrix = Eigen::MatrixXd::Zero(nbins, nbins);
         for(int i = 0; i != nbins; ++i){
-            if(frac_matrix(i,i) != 0)
-                error_reciprocal_matrix(i,i) = 1/sqrt(frac_matrix(i,i));
+            if(frac_matrix(i,i) != 0){
+		double temp = sqrt(frac_matrix(i,i));
+                error_reciprocal_matrix(i,i) = 1.0/temp;
+ 	    }
+	    else
+		error_reciprocal_matrix(i,i) = 1.0;
         }
 
-        corr_covar_matrix = error_reciprocal_matrix * frac_matrix * error_reciprocal_matrix;
+
+        corr_covar_matrix = error_reciprocal_matrix * corr_covar_matrix * error_reciprocal_matrix;
+
         //zero out nans 
         PROsyst::toFiniteMatrix(corr_covar_matrix);
         return corr_covar_matrix;

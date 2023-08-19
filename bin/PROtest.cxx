@@ -75,9 +75,8 @@ int main(int argc, char* argv[])
 
 
 	    Eigen::MatrixXd correlation_matrix = PROsyst::GenerateCorrMatrix(fractional_matrix);
-	    Eigen::MatrixXd collapsed_correlation = CollapseMatrix(config, correlation_matrix);
-	    std::cout << "Collapsed Correlation matrix by PROfit " << std::endl;
-	    std::cout << collapsed_correlation << std::endl;
+	    std::cout << "Correlation Matrix" << std::endl;
+	    std::cout << correlation_matrix << std::endl;
 	    
 	
     }

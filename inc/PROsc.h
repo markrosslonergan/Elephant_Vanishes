@@ -28,7 +28,7 @@ namespace PROfit{
 
             PROsc(){};
 
-            float Pmue(float dmsq, float sinsq2thmue, float enu, float baseline)               
+            float Pmue(float dmsq, float sinsq2thmue, float enu, float baseline) const              
 
                 {
                 float sinterm = std::sin(1.27*dmsq*(baseline/enu));
@@ -42,7 +42,7 @@ namespace PROfit{
                 return prob;
                 }
 
-            float Pmumu(float dmsq, float sinsq2thmumu, float enu, float baseline)
+            float Pmumu(float dmsq, float sinsq2thmumu, float enu, float baseline) const 
 
                 {
                 float sinterm = std::sin(1.27*dmsq*(baseline/enu));

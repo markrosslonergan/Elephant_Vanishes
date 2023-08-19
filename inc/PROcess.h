@@ -19,8 +19,8 @@ namespace PROfit{
 
     /* Function: this is the master weighting function that combines all weights and fills into spectrum.
      * Given an event */
-    PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, PROsc &inosc, std::vector<float> &inshifts, std::vector<float> &physparams);
-    float GetOscWeight(int ev_idx, const PROpeller &inprop, PROsc &inosc, std::vector<float> &inphysparams);
+    PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, const PROsc &inosc, std::vector<float> &inshifts, std::vector<float> &physparams);
+    float GetOscWeight(int ev_idx, const PROpeller &inprop, const PROsc &inosc, std::vector<float> &inphysparams);
     float GetSystWeight(int ev_idx, const PROpeller &inprop, const PROsyst &insyst, float inshift, std::string insystname);
 
 };

@@ -7,16 +7,17 @@
 
 <channel name="numu" unit="Reconstructed Neutrino Energy [GeV]">
         <bins
-        edges=" 0 1 2 3" 
+        edges=" 0 1 2  " 
             />
-        <truebins min="0" max="2" nbins="3"/>
+        <truebins min="0" max="2" nbins="4"/>
     <subchannel name="cc" plotname="#nu_{#mu} CC" osc = "22" />
 </channel>
 
 <plotpot value="1"/>
 
 <variation_list>
-      <allowlist>GENIEReWeight_ICARUS_v1_multisigma_MaCCRES</allowlist>
+    <allowlist>GENIEReWeight_ICARUS_v1_multisigma_MaCCRES</allowlist>
+    <allowlist>horncurrent_Flux</allowlist>  
       <!--<allowlist>piplus_Flux</allowlist>-->
       <denylist>piminus_Flux</denylist>
 </variation_list>
