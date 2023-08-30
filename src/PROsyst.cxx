@@ -95,6 +95,7 @@ namespace PROfit {
 
         //build full covariance matrix 
         Eigen::MatrixXd full_covar_matrix = Eigen::MatrixXd::Zero(nbins, nbins);
+	log<LOG_DEBUG>(L"%1%  || check %2% ") % __func__ % __LINE__;
         for(int i = 0; i != n_universe; ++i){
             PROspec spec_diff  = cv_spec - sys_obj.Variation(i);
         log<LOG_DEBUG>(L"%1% || Check univdrse %2%") % __func__ % i;
@@ -112,6 +113,7 @@ namespace PROfit {
         //build fractional covariance matrix 
         //first, get the matrix with diagonal being reciprocal of CV spectrum prdiction
         const PROspec& cv_spec = sys_obj.CV();
+	int nbins = cv_spec.GetNbins();
         Eigen::MatrixXd cv_spec_matrix =  Eigen::MatrixXd::Identity(nbins, nbins);
         for(int i =0; i != nbins; ++i){
 	double pred = cv_spec.GetBinContent(i);

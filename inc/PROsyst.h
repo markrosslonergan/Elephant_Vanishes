@@ -61,11 +61,6 @@ namespace PROfit {
              */
             static std::pair<Eigen::MatrixXd, Eigen::MatrixXd> GenerateCovarMatrices(const SystStruct& sys_obj);
 
-            /* Function: given a SystStruct with cv and variation spectra, build fractional covariance matrix for the systematics, and return it
-             * Note: it assumes the SystStruct is filled 
-             */
-            static Eigen::MatrixXd GenerateFracCovarMatrix(const SystStruct& sys_obj);
-
             /* Given fractional covariance matrix, calculate the correlation matrix */
             static Eigen::MatrixXd GenerateCorrMatrix(const Eigen::MatrixXd& frac_matrix);
 
