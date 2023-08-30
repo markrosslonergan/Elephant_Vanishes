@@ -34,8 +34,8 @@ int main(int argc, char* argv[])
     PROconfig config(xmlname);
     //PROspec cv_spec = CreatePROspecCV(config);
 
-    //test matrix generation 
-    if(true){
+    //test check for PSD matrix  
+    if(false){
     	    //fill in sysetamtic variations 
 	    std::vector<SystStruct> syst_vector;
 	    PROcess_SBNfit(config, syst_vector);
@@ -45,12 +45,10 @@ int main(int argc, char* argv[])
 	    Eigen::MatrixXd fractional_matrix = Eigen::MatrixXd::Zero(15, 15);
  	    for(auto& s : syst_vector)
 		fractional_matrix += PROsyst::GenerateFracCovarMatrix(s);
-	    std::cout << " Formed fractional covariance matrix by PROfit: " << std::endl; 
-	    std::cout << fractional_matrix << std::endl;
 	   
 	    //check is matrix is psd
 	    bool res1 =  PROsyst::isPositiveSemiDefinite(fractional_matrix), res2 = PROsyst::isPositiveSemiDefinite_WithTolerance(fractional_matrix);
-	    std::cout << "Matrix is positive semidefinite? " << res1 << " " << res2 << std::endl;
+	    std::cout << "Formed fractional covariance matrix is positive semidefinite? " << res1 << " " << res2 << std::endl;
 
 
 	    Eigen::MatrixXd matrix1(3,3), matrix2(2,2), matrix3(2,2);
@@ -67,6 +65,26 @@ int main(int argc, char* argv[])
 	    std::cout << "Matrix3 is positive semidefinite? " << res1 << " " << res2 <<  std::endl;
 	    std::cout << matrix3 << std::endl;
 
+    }
+
+    //test matrix collapsing 
+    if(true){
+    	    //fill in sysetamtic variations 
+	    std::vector<SystStruct> syst_vector;
+	    PROcess_SBNfit(config, syst_vector);
+	    std::cout << syst_vector.size() << std::endl;
+
+	    //generate covariance matrix 
+	    Eigen::MatrixXd fractional_matrix = Eigen::MatrixXd::Zero(30, 30);
+ 	    for(auto& s : syst_vector)
+		//fractional_matrix += PROsyst::GenerateFracCovarMatrix(s);
+		fractional_matrix += PROsyst::GenerateFullCovarMatrix(s);
+	    std::cout << " Formed fractional covariance matrix by PROfit: " << std::endl; 
+	    std::cout << fractional_matrix << std::endl;
+	   
+	    //check is matrix is psd
+	    bool res1 =  PROsyst::isPositiveSemiDefinite(fractional_matrix), res2 = PROsyst::isPositiveSemiDefinite_WithTolerance(fractional_matrix);
+	    std::cout << "Matrix is positive semidefinite? " << res1 << " " << res2 << std::endl;
 
 	    //matrix collapsing 
 	    Eigen::MatrixXd collapsed_fraction = CollapseMatrix(config, fractional_matrix);

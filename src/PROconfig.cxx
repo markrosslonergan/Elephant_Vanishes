@@ -1,6 +1,5 @@
 #include "PROconfig.h"
-using namespace PROfit;
-
+namespace PROfit{
 
 PROconfig::PROconfig(const std::string &xml): 
     m_xmlname(xml), 
@@ -527,12 +526,12 @@ int PROconfig::LoadFromXML(const std::string &filename){
 
                 if((std::string)btype == "double"){
                     if(use_universe){
-                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable_d>(bnam, btype, bhist ) );
+                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnam, btype, bhist ) );
                     } else  if((std::string)bcentral == "true"){
-                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable_d>(bnam, btype, bhist,bsyst, true) );
+                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnam, btype, bhist,bsyst, true) );
                         log<LOG_DEBUG>(L"%1% || Setting as  CV for det sys.") % __func__ ;
                     } else {
-                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable_d>(bnam, btype, bhist,bsyst, false) );
+                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnam, btype, bhist,bsyst, false) );
                         log<LOG_DEBUG>(L"%1% || Setting as individual (not CV) for det sys.") % __func__ ;
                     }
                 }else{
@@ -552,11 +551,11 @@ int PROconfig::LoadFromXML(const std::string &filename){
                 }else if(oscillate == "true"){
                     log<LOG_DEBUG>(L"%1% || Oscillations are Set to  ON ") % __func__;
                     TEMP_branch_variables.back()->SetOscillate(true);
-                    TEMP_branch_variables.back()->true_param_name = pBranch->Attribute("true_param_name");
-                    TEMP_branch_variables.back()->pdg_name = pBranch->Attribute("pdg_name");
+                    TEMP_branch_variables.back()->SetTrueParam(pBranch->Attribute("true_param_name"));
+                    TEMP_branch_variables.back()->SetPDG(pBranch->Attribute("pdg_name"));
                     if(pBranch->Attribute("true_L_name") != NULL){
                         //for oscillation that needs both E and L
-                        TEMP_branch_variables.back()->true_L_name = pBranch->Attribute("true_L_name");
+                        TEMP_branch_variables.back()->SetTrueL(pBranch->Attribute("true_L_name"));
                         log<LOG_DEBUG>(L"%1% || Oscillations using true param name:   %2% and baseline %3% ") % __func__ % pBranch->Attribute("true_param_name") % pBranch->Attribute("true_L_name") ;
                     }else{
                         //for oscillations that only needs E, such as an energy-dependent scaling for single photon NCpi0!
@@ -1224,3 +1223,14 @@ void PROconfig::construct_collapsing_matrix(){
     }
     return;
 }
+
+
+double BranchVariable::GetMonteCarloWeight(){
+    if(branch_monte_carlo_weight_formula){
+        branch_monte_carlo_weight_formula->GetNdata();
+        return (double)branch_monte_carlo_weight_formula->EvalInstance();
+    }
+    return 1.0;
+}
+
+}//namespace

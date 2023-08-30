@@ -155,8 +155,8 @@ namespace PROfit{
     };
 
 
-    /* Function: given config, read files in the xml, and grab all systematic variations 
-     * TODO: not finished yet
+    /* Function: given config, read files in the xml, and grab all systematic variations, and fill the central value and variation spectra in SystStruct vector passed in 
+     * Note: when SystStructs are filled, scaling for subchannels are NOT applied!!
      */
     int PROcess_SBNfit(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector);
     int PROcess_CAFs(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector, PROpeller &inprop);
@@ -166,6 +166,7 @@ namespace PROfit{
 
     /* Function: given configuration, generate spectrum at central value. 
      * Note: assume the input config has SBNfit-style files, TODO: check if compatible with CAF-style
+     * Note: when central value spectrum is filled, scaling for all subchannels are applied here.
      */
     PROspec CreatePROspecCV(const PROconfig& configin);
 
