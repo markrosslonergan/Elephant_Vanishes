@@ -795,23 +795,28 @@ int PROconfig::GetSubchannelIndex(const std::string& fullname) const{
 }
 
 int PROconfig::GetChannelIndex(int subchannel_index) const{
-    auto pos_iter = m_map_subchannel_index_to_channel_index.find(subchannel_index);
-    if(pos_iter == m_map_subchannel_index_to_channel_index.end()){
-        log<LOG_ERROR>(L"%1% || Subchannel index: %2% does not exist in the subchannel-channel indexing map!") % __func__ % subchannel_index;
-        log<LOG_ERROR>(L"Terminating.");
-        exit(EXIT_FAILURE);
-    }
-    return pos_iter->second;
+    size_t index = this->find_equal_index(m_vec_subchannel_index, subchannel_index);
+    return m_vec_channel_index[index];
 }
 
 int PROconfig::GetGlobalBinStart(int subchannel_index) const{
-    auto pos_iter = m_map_subchannel_index_to_global_index_start.find(subchannel_index);
-    if(pos_iter == m_map_subchannel_index_to_global_index_start.end()){
-        log<LOG_ERROR>(L"%1% || Subchannel index: %2% does not exist in the subchannel-globalbin map!") % __func__ % subchannel_index;
-        log<LOG_ERROR>(L"Terminating.");
-        exit(EXIT_FAILURE);
-    }
-    return pos_iter->second;
+    size_t index = this->find_equal_index(m_vec_subchannel_index, subchannel_index);
+    return m_vec_global_reco_index_start[index];
+}
+
+int PROconfig::GetGlobalTrueBinStart(int subchannel_index) const{
+    size_t index = this->find_equal_index(m_vec_subchannel_index, subchannel_index);
+    return m_vec_global_true_index_start[index];
+}
+
+int PROconfig::GetSubchannelIndexFromGlobalBin(int global_reco_index) const {
+    size_t index = this->find_less_or_equal_index(m_vec_global_reco_index_start, global_reco_index); 
+    return m_vec_subchannel_index[index];
+}
+
+int PROconfig::GetSubchannelIndexFromGlobalTrueBin(int global_trueindex) const{
+    size_t index = this->find_less_or_equal_index(m_vec_global_true_index_start, global_trueindex);
+    return m_vec_subchannel_index[index];
 }
 
 const std::vector<double>& PROconfig::GetChannelBinEdges(int channel_index) const{
@@ -836,16 +841,6 @@ int PROconfig::GetChannelNTrueBins(int channel_index) const{
     return m_channel_num_truebins[channel_index];
 }
 
-int PROconfig::GetGlobalTrueBinStart(int subchannel_index) const{
-    auto pos_iter = m_map_subchannel_index_to_trueglobal_index_start.find(subchannel_index);
-    if(pos_iter == m_map_subchannel_index_to_trueglobal_index_start.end()){
-        log<LOG_ERROR>(L"%1% || Subchannel index: %2% does not exist in the subchannel-globalbin map!") % __func__ % subchannel_index;
-        log<LOG_ERROR>(L"Terminating.");
-        exit(EXIT_FAILURE);
-    }
-    return pos_iter->second;
-}
-
 const std::vector<double>& PROconfig::GetChannelTrueBinEdges(int channel_index) const{
 
     //check for out of bound
@@ -858,15 +853,6 @@ const std::vector<double>& PROconfig::GetChannelTrueBinEdges(int channel_index) 
 
     return m_channel_truebin_edges[channel_index];
 }
-
-int PROconfig::GetSubchannelIndexFromGlobalBin(int global_index) const {
-    return this->find_global_subchannel_index_from_global_bin(global_index, this->m_num_subchannels, this->m_channel_num_bins, this->m_num_channels, this->m_num_bins_total);
-}
-
-int PROconfig::GetSubchannelIndexFromGlobalTrueBin(int global_trueindex) const{
-    return this->find_global_subchannel_index_from_global_bin(global_trueindex, this->m_num_subchannels, this->m_channel_num_truebins, this->m_num_channels, this->m_num_truebins_total);
-}
-
 //------------ Start of private function ------------------
 //------------ Start of private function ------------------
 //------------ Start of private function ------------------
@@ -1101,13 +1087,37 @@ void PROconfig::remove_unused_files(){
     return;
 }
 
+size_t PROconfig::find_equal_index(const std::vector<int>& input_vec, int val) const{
+    auto pos_iter = std::lower_bound(input_vec.begin(), input_vec.end(), val);
+    if(pos_iter == input_vec.end() || (*pos_iter) != val){
+	log<LOG_ERROR>(L"%1% || Input value: %2% does not exist in the vector! Max element available: %3%") % __func__ % val % input_vec.back();
+        log<LOG_ERROR>(L"Terminating.");
+        exit(EXIT_FAILURE);
+    }
+    size_t index = pos_iter - input_vec.begin();
+    return index;
+}
+
+
+size_t PROconfig::find_less_or_equal_index(const std::vector<int>& input_vec, int val) const{
+    auto pos_iter = std::lower_bound(input_vec.begin(), input_vec.end(), val);
+    if(pos_iter == input_vec.end() || (*pos_iter) != val){
+        return pos_iter - input_vec.begin() -1;
+    }
+    else
+	return pos_iter - input_vec.begin();
+    return -1;
+}
+
 
 void PROconfig::generate_index_map(){
     log<LOG_INFO>(L"%1% || Generate map between subchannel and global indices..") % __func__;
     m_map_fullname_subchannel_index.clear();
-    m_map_subchannel_index_to_global_index_start.clear();
-    m_map_subchannel_index_to_trueglobal_index_start.clear();
-    m_map_subchannel_index_to_channel_index.clear();
+    m_vec_subchannel_index.clear();
+    m_vec_channel_index.clear();
+    m_vec_global_reco_index_start.clear();
+    m_vec_global_true_index_start.clear();
+
 
     int global_subchannel_index = 0;
     for(int im = 0; im < m_num_modes; im++){
@@ -1132,9 +1142,10 @@ void PROconfig::generate_index_map(){
                     int global_truebin_index = mode_truebin_start + detector_truebin_start + channel_truebin_start + sc*m_channel_num_truebins[ic];
 
                     m_map_fullname_subchannel_index[temp_name] = global_subchannel_index;
-                    m_map_subchannel_index_to_global_index_start[global_subchannel_index] = global_bin_index;
-                    m_map_subchannel_index_to_trueglobal_index_start[global_subchannel_index] = global_truebin_index;
-                    m_map_subchannel_index_to_channel_index[global_subchannel_index] = ic;
+		    m_vec_subchannel_index.push_back(global_subchannel_index);
+		    m_vec_channel_index.push_back(ic);
+		    m_vec_global_reco_index_start.push_back(global_bin_index);
+		    m_vec_global_true_index_start.push_back(global_truebin_index);
 
                     ++global_subchannel_index;
                 }

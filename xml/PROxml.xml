@@ -22,7 +22,7 @@
       <denylist>piminus_Flux</denylist>
 </variation_list>
 
-<MCFile treename="recTree" filename="icarus_test.flat.caf.root" scale = "1.0" maxevents="50000" pot="1"> 
+<MCFile treename="recTree" filename="/uboone/app/users/gge/PROfit/Devs/Elephant_Vanishes/xml/icarus_test.flat.caf.root" scale = "1.0" maxevents="50000" pot="1"> 
      <branch
          name                  = "rec.slc.truth.E[Sum$((rec.slc.truth.index>=0)*Iteration$)]" 
          type                  = "double"

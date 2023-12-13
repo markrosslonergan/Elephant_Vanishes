@@ -142,9 +142,10 @@ namespace PROfit{
 
             //map from subchannel name/index to global index and channel index
             std::unordered_map<std::string, int> m_map_fullname_subchannel_index;
-            std::unordered_map<int, int> m_map_subchannel_index_to_global_index_start;
-            std::unordered_map<int, int> m_map_subchannel_index_to_trueglobal_index_start;
-            std::unordered_map<int, int> m_map_subchannel_index_to_channel_index;
+	    std::vector<int> m_vec_subchannel_index; //vector of global subchannel index, in increasing order
+	    std::vector<int> m_vec_channel_index;    //vector of corresponding channel index
+	    std::vector<int> m_vec_global_reco_index_start;  //vector of global reco bin index, in increasing order
+	    std::vector<int> m_vec_global_true_index_start;  //vector of global true bin index, in increasing order
 
 
             //---- PRIVATE FUNCTION ------
@@ -165,7 +166,18 @@ namespace PROfit{
             /* Function: fill in mapping between subchannel name/index to global indices */
             void generate_index_map();
 
-            /* Function: given global bin index, return associated global subchannel index */
+
+	    /* Function: given an input vector that's sorted in ascending order, and input val, return the index of elmeent which is equal to val
+ 	     * Note: it gives exception when input value is not present in the vector 
+	     */
+	    size_t find_equal_index(const std::vector<int>& input_vec, int val) const;
+
+	    /* Function: given an input vector that's sorted in ascending order, and input val, return the index of the closest element which is equal or smaller than val */
+	    size_t find_less_or_equal_index(const std::vector<int>& input_vec, int val) const;
+
+            /* Function: given global bin index, return associated global subchannel index 
+ 	     * Note: not used anymore 
+ 	     */
             int find_global_subchannel_index_from_global_bin(int global_index, const std::vector<int>& num_subchannel_in_channel, const std::vector<int>& num_bins_in_channel, int num_channels, int num_bins_total) const;
 
 
