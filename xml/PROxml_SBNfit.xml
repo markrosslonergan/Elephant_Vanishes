@@ -1,0 +1,46 @@
+<?xml version="1.0" ?>
+
+<!--specifies neutrino mode or antineutrino mode-->
+<mode name="nu" />
+
+<detector name="ICARUS" />
+
+<channel name="numu" unit="Reconstructed Neutrino Energy [GeV]">
+        <bins
+          edges="0.2 0.4 0.6 0.8 1.0 1.5 2.0 2.5 3.0" 
+            />
+
+    <subchannel name="nu" plotname="#nu_{#mu} CC and NC" osc = "22" />
+</channel>
+
+<plotpot value="3.3e+20"/>
+
+<variation_list>
+    <allowlist>expskin_Flux</allowlist>
+    <allowlist>horncurrent_Flux</allowlist>
+    <allowlist>nucleoninexsec_Flux</allowlist>
+    <allowlist>nucleonqexsec_Flux</allowlist>
+    <allowlist>nucleontotxsec_Flux</allowlist>
+    <allowlist>pioninexsec_Flux</allowlist>
+    <allowlist>pionqexsec_Flux</allowlist>
+    <allowlist>piontotxsec_Flux</allowlist>
+    <allowlist>piplus_Flux</allowlist>
+    <allowlist>piminus_Flux</allowlist>
+    <allowlist>kplus_Flux</allowlist>
+    <allowlist>kminus_Flux</allowlist>
+    <allowlist>kzero_Flux</allowlist>
+</variation_list>
+
+<MCFile treename="nutree" filename="/Users/pinguino/process_root/take2/selected_output.root" scale = "1.0" maxevents="500000" pot="2.8718482575967702e+20">
+     <branch
+         name                    = "recoE"
+         type                    = "double"
+         associated_subchannel   = "nu_ICARUS_numu_nu"
+         oscillate               = "true"
+         true_param_name         = "trueE"
+         true_L_name             = "baseline"
+         pdg_name                = "PDG"
+         eventweight_branch_name = "event_weight"
+         additional_weight       = "1"
+         />
+</MCFile>

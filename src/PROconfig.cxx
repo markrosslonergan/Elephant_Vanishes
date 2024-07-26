@@ -476,7 +476,7 @@ int PROconfig::LoadFromXML(const std::string &filename){
                     log<LOG_WARNING>(L"%1% || WARNING: No eventweight branch name passed, defaulting to 'weights' @ line %2% in %3% ") % __func__ % __LINE__  % __FILE__;
                     TEMP_eventweight_branch_names.push_back("weights");
                 }else{
-                    log<LOG_DEBUG>(L"%1% || Setting eventweight branch name %2%") %__func__ % bnam;
+                    log<LOG_DEBUG>(L"%1% || Setting eventweight branch name %2%") %__func__ % bwname;
                     TEMP_eventweight_branch_names.push_back(std::string(bwname));
                 }
 
