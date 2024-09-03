@@ -1,0 +1,101 @@
+<?xml version="1.0" ?>
+
+<!--specifies neutrino mode or antineutrino mode-->
+<mode name="nu" />
+
+<detector name="SBND" />
+
+<channel name="numu" unit="Reconstructed Neutrino Energy [GeV]">
+        <bins
+        edges=" 0 1 2" 
+            />
+        <truebins min="0" max="2" nbins="4"/>
+    <subchannel name="cc" plotname="#nu_{#mu} CC" osc = "22" />
+</channel>
+
+<plotpot value="1"/>
+
+<variation_list>
+    <allowlist>expskin_Flux</allowlist>  
+    <allowlist>horncurrent_Flux</allowlist>  
+    <allowlist>nucleoninexsec_Flux</allowlist>  
+    <allowlist>nucleonqexsec_Flux</allowlist>  
+    <allowlist>nucleontotxsec_Flux</allowlist>  
+    <allowlist>pioninexsec_Flux</allowlist>  
+    <allowlist>pionqexsec_Flux</allowlist>  
+    <allowlist>piontotxsec_Flux</allowlist>  
+    <allowlist>piplus_Flux</allowlist>  
+    <allowlist>piminus_Flux</allowlist>  
+    <allowlist>kplus_Flux</allowlist>  
+    <allowlist>kminus_Flux</allowlist>  
+    <allowlist>kzero_Flux</allowlist>  
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_AhtBY</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_BhtBY</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_CoulombCCQE</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_CV1uBY</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_CV2uBY</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_EtaNCEL</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_FrAbs_N</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_FrAbs_pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_FrCEx_N</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_FrCEx_pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_FrInel_N</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_FrInel_pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_FrPiProd_N</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_FrPiProd_pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_MFP_N</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_MFP_pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_MaCCRES</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_MaNCEL</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_MaNCRES</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_MvCCRES</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_MvNCRES</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvbarnCC1pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvbarnCC2pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvbarnNC1pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvbarnNC2pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvbarpCC1pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvbarpCC2pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvbarpNC1pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvbarpNC2pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvnCC1pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvnCC2pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvnNC1pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvnNC2pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvpCC1pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvpCC2pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvpNC1pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NonRESBGvpNC2pi</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NormCCMEC</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_NormNCMEC</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_RPA_CCQE</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_ZExpA1CCQE</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_ZExpA2CCQE</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_ZExpA3CCQE</allowlist>
+    <allowlist>GENIEReWeight_SBN_v1_multisigma_ZExpA4CCQE</allowlist>
+    <allowlist>detector_var1_untunedtpcsigshape_multisigma</allowlist>
+    <allowlist>detector_var2_tpcind2transparency_multisigma</allowlist>
+    <allowlist>detector_var3_tpcind1gain_multisigma</allowlist>
+    <allowlist>detector_var4_pmtdecreasedqe_multisigma</allowlist>
+    <allowlist>detector_var5_ellipsoidalrecomb_multisigma</allowlist>
+    <allowlist>detector_var6_tpccohnoise_multisigma</allowlist>
+    <allowlist>detector_var7_tpcintnoise_multisigma</allowlist>
+</variation_list>
+
+<MCFile treename="events/selectedNu" filename="/exp/icarus/app/users/jzettle/Systematics_PROfit/Trees/selected_events_dependentdetsysts.root" scale = "1.0" maxevents="50000" pot="1"> 
+    <friend treename="events/multisimTree" filename="/exp/icarus/app/users/jzettle/Systematics_PROfit/Trees/selected_events_dependentdetsyst.root"/>
+    <friend treename="events/multisigmaTree" filename="/exp/icarus/app/users/jzettle/Systematics_PROfit/Trees/selected_events_dependentdetsyst.root"/>
+    <friend treename="events/detsystTree" filename="/exp/icarus/app/users/jzettle/Systematics_PROfit/Trees/selected_events_dependentdetsyst.root"/>
+     <branch
+         name                  = "recoE" 
+         type                  = "double"
+         associated_subchannel = "nu_SBND_numu_cc"
+         oscillate             = "true"
+         true_param_name       = "trueE" 
+         true_L_name           = "trueL/1000.0"
+         pdg_name              = "truePDG"
+         additional_weight     = "1" 
+         />
+</MCFile>
+
+
