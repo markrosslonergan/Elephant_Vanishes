@@ -50,6 +50,13 @@ FetchContent_Declare(
     )
 FetchContent_MakeAvailable(tinyxml2)
 
+FetchContent_Delcare(
+    autodiff
+    GIT_REPOSITORY https://github.com/autodiff/autodiff.git
+    GIT_TAG        v1.1.2
+    )
+ FetchContent_MakeAvailable(autodiff)
+   
 #./configure --prefix=$MPICH_DIR/mpich-install --disable-f08 --disable-collalgo-tests
 #ExternalProject_Add(mpich
 #    DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}
