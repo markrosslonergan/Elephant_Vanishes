@@ -2,7 +2,7 @@
 #include "Eigen/src/Core/Matrix.h"
 #include "PROlog.h"
 using namespace PROfit;
-
+using namespace autodiff;
 
 PROchi::PROchi(const std::string tag, const PROconfig *conin, const PROpeller *pin, const PROsyst *systin, const PROsc *oscin, const PROspec &datain, int nparams, int nsyst, double logdmsq, double logsinsq2tmm) : model_tag(tag), config(conin), peller(pin), syst(systin), osc(oscin), data(datain), nparams(nparams), nsyst(nsyst), logdmsq(logdmsq), logsinsq2tmm(logsinsq2tmm) {
     last_value = 0.0; last_param = Eigen::VectorXd::Zero(nparams); 

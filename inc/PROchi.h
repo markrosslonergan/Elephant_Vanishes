@@ -10,6 +10,10 @@
 #include "PROsc.h"
 #include "PROcess.h"
 
+//AutoDiff
+#include <autodiff/reverse/var.hpp>
+
+
 namespace PROfit{
 
     /* 

@@ -50,13 +50,15 @@ FetchContent_Declare(
     )
 FetchContent_MakeAvailable(tinyxml2)
 
-FetchContent_Delcare(
+set(AUTODIFF_BUILD_TESTS OFF)
+set(AUTODIFF_BUILD_PYTHON OFF)
+FetchContent_Declare(
     autodiff
     GIT_REPOSITORY https://github.com/autodiff/autodiff.git
     GIT_TAG        v1.1.2
     )
- FetchContent_MakeAvailable(autodiff)
-   
+FetchContent_MakeAvailable(autodiff)
+
 #./configure --prefix=$MPICH_DIR/mpich-install --disable-f08 --disable-collalgo-tests
 #ExternalProject_Add(mpich
 #    DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}
@@ -89,7 +91,7 @@ if(MPI_ENABLE)
 
     message("MFA include dir: ${MFA_INCLUDE_DIR}")
     message("DIY include dir: ${DIY_INCLUDE_DIR}")
-    
+
     if                          (MFA_INCLUDE_DIR)
         include_directories     (SYSTEM ${MFA_INCLUDE_DIR} ${DIY_INCLUDE_DIR} ${FMT_INCLUDE_DIR})
         message                 ("MFA_INCLUDE_DIR = " ${MFA_INCLUDE_DIR})
