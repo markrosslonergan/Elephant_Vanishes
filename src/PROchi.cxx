@@ -4,7 +4,7 @@
 using namespace PROfit;
 
 
-PROchi::PROchi(const std::string tag, const PROconfig *conin, const PROpeller *pin, const PROsyst *systin, const PROsc *oscin, const PROspec &datain, int nparams, int nsyst, EvalStrategy strat, std::vector<float> physics_param_fixed) : model_tag(tag), config(conin), peller(pin), syst(systin), osc(oscin), data(datain), nparams(nparams), nsyst(nsyst), strat(strat), physics_param_fixed(physics_param_fixed) {
+PROchi::PROchi(const std::string tag, const PROconfig *conin, const PROpeller *pin, const PROsyst *systin, const PROsc *oscin, const PROspec &datain, int nparams, int nsyst, EvalStrategy strat, std::vector<float> physics_param_fixed) : PROmetric(), model_tag(tag), config(conin), peller(pin), syst(systin), osc(oscin), data(datain), nparams(nparams), nsyst(nsyst), strat(strat), physics_param_fixed(physics_param_fixed) {
     last_value = 0.0; last_param = Eigen::VectorXd::Zero(nparams); 
     fixed_index = -999;
 }
@@ -14,12 +14,12 @@ void PROchi::fixSpline(int fix, double valin){
     fixed_val=valin;
     return;
 }
-float PROchi::operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradient){
+double PROchi::operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradient){
     return PROchi::operator()(param, gradient, true);
 }
 
 
-float PROchi::operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradient, bool rungradient){
+double PROchi::operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradient, bool rungradient){
 
 
     // Get Spectra from FillRecoSpectra

@@ -13,6 +13,7 @@
 #include "PROpeller.h"
 #include "PROsc.h"
 #include "PROcess.h"
+#include "PROmetric.h"
 
 namespace PROfit{
 
@@ -26,7 +27,7 @@ namespace PROfit{
      *  Improve gradient calculation
      *  */
 
-    class PROchi
+    class PROchi : public PROmetric
     {
         public:
             enum EvalStrategy {
@@ -61,8 +62,8 @@ namespace PROfit{
             PROchi(const std::string tag, const PROconfig *conin, const PROpeller *pin, const PROsyst *systin, const PROsc *oscin, const PROspec &datain, int nparams, int nsyst, EvalStrategy strat = EventByEvent, std::vector<float> physics_param_fixed = std::vector<float>());
 
             /*Function: operator() is what is passed to minimizer.*/
-            float operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradient);
-            float operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradient, bool nograd);
+            virtual double operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradient);
+            virtual double operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradient, bool nograd);
 
             void fixSpline(int fix, double valin);
 

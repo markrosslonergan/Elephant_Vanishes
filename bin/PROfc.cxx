@@ -7,6 +7,7 @@
 #include "PROpeller.h"
 #include "PROchi.h"
 #include "PROcess.h"
+#include "PROfitter.h"
 
 #include "CLI11.h"
 #include "LBFGSB.h"
@@ -26,7 +27,6 @@ using namespace PROfit;
 log_level_t GLOBAL_LEVEL = LOG_ERROR;
 
 struct fc_out{
-    int niter_syst, niter_osc;
     double chi2_syst, chi2_osc, dmsq, sinsq2tmm;
     Eigen::VectorXd best_fit_syst, best_fit_osc, syst_throw;
 };
@@ -35,7 +35,6 @@ struct fc_args {
     size_t todo;
     std::vector<double>* dchi2s;
     std::vector<fc_out>* out;
-    size_t *count;
     const PROconfig config;
     const PROpeller prop;
     PROsyst systs;
@@ -47,7 +46,6 @@ struct fc_args {
 void fc_worker(fc_args args) {
     auto dchi2s = args.dchi2s;
     auto out = args.out;
-    auto count = args.count;
     auto &config = args.config;
     auto &prop = args.prop;
     auto &systs = args.systs;
@@ -58,8 +56,7 @@ void fc_worker(fc_args args) {
     std::mt19937 rng{rd()};
     PROsc osc(prop);
     while(dchi2s->size() < args.todo) {
-        (*count)++;
-        std::cout << "Thread #" << args.thread << " Size " << dchi2s->size() << " count " << *count << "\n";
+        std::cout << "Thread #" << args.thread << " Size " << dchi2s->size() << "\n";
         std::normal_distribution<float> d;
         std::vector<float> throws;
         Eigen::VectorXd throwC = Eigen::VectorXd::Constant(cv.size(), 0);
@@ -67,7 +64,11 @@ void fc_worker(fc_args args) {
             throws.push_back(d(rng));
         for(size_t i = 0; i < (size_t)cv.size(); i++)
             throwC(i) = d(rng);
-        PROspec shifted = systs.GetSplineShiftedSpectrum(config, prop, throws);
+        //PROspec shifted = systs.GetSplineShiftedSpectrum(config, prop, throws);
+        std::vector<float> phy;
+        phy.push_back(std::log10(4.0f));
+        phy.push_back(std::log10(0.2f));
+        PROspec shifted = FillRecoSpectra(config, prop, systs, &osc, throws, phy);
         PROspec newSpec = PROspec::PoissonVariation(PROspec(shifted.Spec() + L * throwC, shifted.Error()));
 
         // No oscillations
@@ -76,38 +77,14 @@ void fc_worker(fc_args args) {
         param.max_iterations = 100;
         param.max_linesearch = 50;
         param.delta = 1e-6;
-        LBFGSpp::LBFGSBSolver<double> solver(param); 
+
         size_t nparams = systs.GetNSplines();
-        PROchi chi("3plus1",&config,&prop,&systs,NULL, newSpec, nparams, systs.GetNSplines(), PROchi::BinnedChi2);
         Eigen::VectorXd lb = Eigen::VectorXd::Constant(nparams, -3.0);
         Eigen::VectorXd ub = Eigen::VectorXd::Constant(nparams, 3.0);
-        Eigen::VectorXd x = Eigen::VectorXd::Constant(nparams, 0.0);
+        PROfitter fitter(ub, lb, param);
 
-        double fx;
-        int niter=-1;
-        std::vector<double> chi2s;
-        int nfit = 0;
-        do {
-            nfit++;
-            for(size_t i = 0; i < nparams; ++i)
-                x(i) = 0.3*d(rng);
-            // x will be overwritten to be the best point found
-            log<LOG_INFO>(L"%1% || Fit without oscillations") % __func__;
-            try {
-                niter = solver.minimize(chi, x, fx, lb, ub);
-            } catch(std::runtime_error &except) {
-                log<LOG_ERROR>(L"%1% || Fit failed, %2%") % __func__ % except.what();
-                continue;
-            }
-            chi2s.push_back(fx);
-        } while(chi2s.size() < 10 && nfit < 100);
-
-        if(chi2s.size() < 10) continue;
-        fx = *std::min_element(chi2s.begin(), chi2s.end());
-        //std::cout<<"Chis min: "<<fx<<" || ";
-        //for(auto &c: chi2s)std::cout<<c<<" ";
-        //std::cout<<std::endl;
-        log<LOG_INFO>(L"%1% || Chi2 min %2% || %3%") % __func__ % fx % chi2s;
+        PROchi chi("3plus1",&config,&prop,&systs,&osc, newSpec, nparams, systs.GetNSplines(), PROchi::BinnedChi2);
+        double chi2_syst = fitter.Fit(chi);
 
         // With oscillations
         LBFGSpp::LBFGSBParam<double> param_osc;  
@@ -115,53 +92,27 @@ void fc_worker(fc_args args) {
         param_osc.max_iterations = 100;
         param_osc.max_linesearch = 250;
         param_osc.delta = 1e-6;
-        LBFGSpp::LBFGSBSolver<double> solver_osc(param_osc); 
+
         nparams = 2 + systs.GetNSplines();
-        PROchi chi_osc("3plus1",&config,&prop,&systs,&osc, newSpec, nparams, systs.GetNSplines(), PROchi::BinnedChi2);
         Eigen::VectorXd lb_osc = Eigen::VectorXd::Constant(nparams, -3.0);
-        //lb_osc(0) = 0.01; lb_osc(1) = 0;
         lb_osc(0) = -2; lb_osc(1) = -std::numeric_limits<double>::infinity();
         Eigen::VectorXd ub_osc = Eigen::VectorXd::Constant(nparams, 3.0);
-        //ub_osc(0) = 100; ub_osc(1) = 1;
         ub_osc(0) = 2; ub_osc(1) = 0;
-        Eigen::VectorXd x_osc = Eigen::VectorXd::Constant(nparams, 0.0);
-        x_osc(0) = 1.0;
+        PROfitter fitter_osc(ub_osc, lb_osc, param);
 
-        // x will be overwritten to be the best point found
-        log<LOG_INFO>(L"%1% || Fit with oscillations") % __func__;
-        double fx_osc;
-        int niter_osc = -1;
-        std::vector<std::tuple<double, double, double>> res;
-        nfit = 0;
-        do {
-            nfit++;
-            for(size_t i = 0; i < nparams; ++i)
-                x_osc(i) = d(rng);
-            x_osc(0) = x_osc(0) < -2 ? -2 : x_osc(0) > 2 ? 2 : x_osc(0);
-            x_osc(1) -= 4;
-            try {
-                niter_osc = solver_osc.minimize(chi_osc, x_osc, fx_osc, lb_osc, ub_osc);
-            } catch(std::runtime_error &except) {
-                log<LOG_ERROR>(L"%1% || Fit failed, %2%") % __func__ % except.what();
-                //for(auto &t: throws) log<LOG_ERROR>(L"%1% || Throws, %2%") % __func__ % t;
-                continue;
-            }
-            res.emplace_back(fx_osc, x_osc(0), x_osc(1));
-        } while(res.size() < 10 && nfit < 100);
-        if(res.size() < 10) continue;
-        const auto [chi2_osc, ldmsq, lss2t] = *std::min_element(res.begin(), res.end(),
-            [](const auto& l, const auto& r) {
-              return std::get<0>(l) < std::get<0>(r);
-            });
-        log<LOG_INFO>(L"%1% || Chi2 min %2% || %3% %4%") % __func__ % fx_osc % std::pow(10, ldmsq) % std::pow(10, lss2t);
-        
+        PROchi chi_osc("3plus1",&config,&prop,&systs,&osc, newSpec, nparams, systs.GetNSplines(), PROchi::BinnedChi2);
+        double chi2_osc = fitter_osc.Fit(chi_osc); 
 
         Eigen::VectorXd t = Eigen::VectorXd::Constant(throws.size(), 0);
         for(size_t i = 0; i < throws.size(); i++) t(i) = throws[i];
 
-        out->push_back({niter, niter_osc, fx, chi2_osc, std::pow(10, ldmsq), std::pow(10, lss2t), x, x_osc.segment(2, nparams-2), t});
+        out->push_back({
+                chi2_syst, chi2_osc, 
+                std::pow(10, fitter_osc.best_fit(0)), std::pow(10, fitter_osc.best_fit(1)), 
+                fitter.best_fit, fitter_osc.best_fit.segment(2, nparams-2), t
+        });
 
-        dchi2s->push_back(std::abs(fx - chi2_osc ));
+        dchi2s->push_back(std::abs(chi2_syst - chi2_osc ));
     }
 }
 
@@ -218,15 +169,12 @@ int main(int argc, char* argv[])
     dchi2s.reserve(nthread);
     std::vector<std::vector<fc_out>> outs;
     outs.reserve(nthread);
-    std::vector<size_t> counts;
-    counts.reserve(nthread);
     std::vector<std::thread> threads;
     for(size_t i = 0; i < nthread; i++) {
         dchi2s.emplace_back();
         outs.emplace_back();
-        counts.push_back(0);
         // TODO: nfit/nthread is not correct if nthread does not evenly divide nfit
-        fc_args args{nfit/nthread, &dchi2s.back(), &outs.back(), &counts.back(), myConf, myprop, systs, data, err, llt.matrixL(), (int)i};
+        fc_args args{nfit/nthread, &dchi2s.back(), &outs.back(), myConf, myprop, systs, data, err, llt.matrixL(), (int)i};
         threads.emplace_back(fc_worker, args);
     }
     for(auto&& t: threads) {
@@ -241,7 +189,6 @@ int main(int argc, char* argv[])
     TH1D hss2t("hss2t", ";sin^{2}2#theta_{#mu#mu}", 50, 0, 1);
     TH2D hdmsqvss2t("hdmsqvss2t", ";sin^{2}2#theta_{#mu#mu};#Deltam^{2}", 50, 0, 1, 40, dmsqedges.data());
 
-    size_t count = std::accumulate(counts.begin(), counts.end(), 0);
     std::vector<double> flattened_dchi2s;
     for(const auto& v: dchi2s) {
         for(const auto& dchi2: v) {
@@ -273,7 +220,6 @@ int main(int argc, char* argv[])
     std::sort(flattened_dchi2s.begin(), flattened_dchi2s.end());
 
     std::cout << "90% delta chi2: " << flattened_dchi2s[0.9*flattened_dchi2s.size()] << std::endl;
-    std::cout << "Total attempted throws: " << count << std::endl;
 
     return 0;
 }
