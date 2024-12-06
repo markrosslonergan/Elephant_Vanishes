@@ -23,6 +23,8 @@ namespace PROfit{
 
     PROspec FillCVSpectrum(const PROconfig &inconfig, const PROpeller &inprop, bool binned = false);
     PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, const PROsc *inosc, std::vector<float> &inshifts, std::vector<float> &physparams, bool binned = false);
+    PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, const PROsc *inosc, std::map<std::string, float> &inshifts, std::vector<float> &physparams, bool binned = false);
+    PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, std::map<std::string, float> &inshifts);
 
     float GetOscWeight(int rule, float le, const PROsc &inosc, std::vector<float> &inphysparams);
     float GetOscWeight(int ev_idx, const PROpeller &inprop, const PROsc &inosc, std::vector<float> &inphysparams);

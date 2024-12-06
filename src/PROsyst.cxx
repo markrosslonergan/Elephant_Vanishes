@@ -26,6 +26,44 @@ namespace PROfit {
         fractional_covariance = this->SumMatrices();
     }
 
+    PROsyst PROsyst::subset(const std::vector<std::string> &systs) {
+        PROsyst ret;
+        for(const std::string &name: systs) {
+            const auto &[idx, stype] = syst_map[name];
+            switch(stype) {
+            case SystType::Spline:
+                ret.syst_map[name] = std::make_pair(ret.splines.size(), SystType::Spline);
+                ret.spline_names.push_back(name);
+                ret.splines.push_back(splines[idx]);
+            case SystType::Covariance:
+                ret.syst_map[name] = std::make_pair(ret.covmat.size(), SystType::Covariance);
+                ret.covmat.push_back(covmat[idx]);
+                ret.corrmat.push_back(corrmat[idx]);
+            }
+        }
+        ret.fractional_covariance = ret.SumMatrices();
+        return ret;
+    }
+
+    PROsyst PROsyst::excluding(const std::vector<std::string> &systs) {
+        PROsyst ret;
+        for(const auto &[name, spair]: syst_map) {
+            if(std::find(systs.begin(), systs.end(), name) != systs.end()) continue;
+            const auto &[idx, stype] = spair;
+            switch(stype) {
+            case SystType::Spline:
+                ret.syst_map[name] = std::make_pair(ret.splines.size(), SystType::Spline);
+                ret.spline_names.push_back(name);
+                ret.splines.push_back(splines[idx]);
+            case SystType::Covariance:
+                ret.syst_map[name] = std::make_pair(ret.covmat.size(), SystType::Covariance);
+                ret.covmat.push_back(covmat[idx]);
+                ret.corrmat.push_back(corrmat[idx]);
+            }
+        }
+        ret.fractional_covariance = ret.SumMatrices();
+        return ret;
+    }
 
     Eigen::MatrixXd PROsyst::SumMatrices() const{
 
