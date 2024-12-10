@@ -29,6 +29,8 @@ namespace PROfit {
             /*Function: Primary constructor from a vector of SystStructs  */
             PROsyst(const std::vector<SystStruct>& systs);
 
+            PROsyst subset(const std::vector<std::string> &systs);
+            PROsyst excluding(const std::vector<std::string> &systs);
 
             /* Function: given the systematic name, return corresponding fractional covariance matrix */
             Eigen::MatrixXd GrabMatrix(const std::string& sys) const;
