@@ -23,7 +23,6 @@
 
 using namespace PROfit;
 
-//log_level_t GLOBAL_LEVEL = LOG_DEBUG;
 log_level_t GLOBAL_LEVEL = LOG_ERROR;
 
 struct fc_out{
@@ -118,52 +117,62 @@ void fc_worker(fc_args args) {
 
 int main(int argc, char* argv[])
 {
-    gStyle->SetOptStat(0);
-    CLI::App app{"Test for PROfit"}; 
+    std::string xmlname, filename;
+    int maxevents;
+    size_t  nthread, nfit;
+    std::array<float, 2> injected_pt{0, 0};
+    std::vector<std::string> syst_list, systs_excluded;
+    bool eventbyevent=false, statonly = false;
 
-    // Define options
-    std::string xmlname = "NULL.xml"; 
-    int maxevents = 100;
-    size_t nfit = 1, nthread = 1;
+    app.add_option("-x, --xml",       xmlname,        "Input PROfit XML config.")->required();
+    app.add_option("-n, --nfit",      nfit,           "Number of fits.")->required();
+    app.add_option("-m, --max",       maxevents,      "Max number of events to run over.")->default_val(50000);
+    app.add_option("-v, --verbosity", GLOBAL_LEVEL,   "Verbosity Level [1-4].")->default_val(LOG_ERROR);
+    app.add_option("-t, --nthread",   nthread,        "Number of fits.")->default_val(1);
+    app.add_option("-o, --outfile",   filename,       "If you want chisq to be dumped to text file, provide name")->default_val("");
+    app.add_option("--inject",        injected_pt,    "Physics parameters to inject as true signal.")->default_str("0 0");
+    app.add_option("--syst-list",     syst_list,      "Override list of systematics to use (note: all systs must be in the xml).");
+    app.add_option("--exclude-systs", systs_excluded, "List of systematics to exclude.")->excludes("--syst-list"); 
 
-    //doubles
-    app.add_option("-x,--xml", xmlname, "Input PROfit XML config.");
-    app.add_option("-m,--max", maxevents, "Max number of events to run over.");
-    app.add_option("-v,--verbosity", GLOBAL_LEVEL, "Verbosity Level [1-4].");
-    app.add_option("-n,--nfit",nfit, "Number of fits.");
-    app.add_option("-t,--nthread",nthread, "Number of threads.");
+    app.add_flag("--event-by-event",  eventbyevent,   "Do you want to weight event-by-event?");
+    app.add_flag("-s, --statonly",    statonly,       "Run a stats only surface instead of fitting systematics");
 
     CLI11_PARSE(app, argc, argv);
+
+    bool savetoroot = filename.size() > 5 && filename.substr(filename.size() - 5) == ".root";
 
     if(nthread > nfit) nthread = nfit;
 
     //Initilize configuration from the XML;
     PROconfig myConf(xmlname);
 
-    //Inititilize PROpeller to keep MC
     PROpeller myprop;
-    
-    //Initilize objects for systematics storage
     std::vector<SystStruct> systsstructs;
-
-    //Process the CAF files to grab and fill all SystStructs and PROpeller
     PROcess_CAFAna(myConf, systsstructs, myprop);
 
-    //Build a PROsyst to sort and analyze all systematics
     PROsyst systs(systsstructs);
-
-    //Define the model (currently 3+1 SBL)
     PROsc osc(myprop);
 
-    std::random_device rd{};
-    std::mt19937 gen{rd()};
+    std::vector<float> pparams = {std::log10(injected_pt[0]), std::log10(injected_pt[1])};
+    log<LOG_INFO>(L"%1% | Injected point: sinsq2t = %2% and dmsq = %3%\n") % __func__ % injected_pt[0] % injected_pt[1];
+    for(const auto& [name, shift]: injected_systs)
+      log<LOG_INFO>(L"%1% | Injected shift: %2% shifted by %3%\n") % __func__ % name % shift;
+
+    PROspec data = injected_pt[0] != 0 && injected_pt[1] != 0 ? FillRecoSpectra(config, prop, systs, &osc, injected_systs, pparams, !eventbyevent) :
+                   injected_systs.size() ? FillRecoSpectra(config, prop, systs, injected_systs, !eventbyevent) :
+                   FillCVSpectrum(config, prop, !eventbyevent);
+
+    if(syst_list.size()) {
+      systs = systs.subset(syst_list);
+    } else if(systs_excluded.size()) {
+      systs = systs.excluding(systs_excluded);
+    }
 
     Eigen::VectorXd data = systsstructs.back().CV().Spec();
     Eigen::VectorXd err = systsstructs.back().CV().Error();
     Eigen::MatrixXd diag = data.array().matrix().asDiagonal();
     Eigen::MatrixXd full_cov = diag * systs.fractional_covariance * diag;
-    //Eigen::MatrixXd stat_cov = CollapseMatrix(myConf, diag);
-    Eigen::LLT<Eigen::MatrixXd> llt(CollapseMatrix(myConf, full_cov));//+ stat_cov);
+    Eigen::LLT<Eigen::MatrixXd> llt(CollapseMatrix(myConf, full_cov));
     
     std::vector<std::vector<double>> dchi2s;
     dchi2s.reserve(nthread);
@@ -181,44 +190,58 @@ int main(int argc, char* argv[])
         t.join();
     }
 
-    TH1D hdchi2s("hdchi2s", ";#Delta#chi^{2}", 50, 0, 50);
-    std::vector<double> dmsqedges;
-    for(size_t i = 0; i < 41; ++i)
-        dmsqedges.push_back(std::pow(10.0, -2.0 + i * 4.0 / 40));
-    TH1D hdmsqs("hdmsqs", ";#Deltam^{2}", 40, dmsqedges.data());
-    TH1D hss2t("hss2t", ";sin^{2}2#theta_{#mu#mu}", 50, 0, 1);
-    TH2D hdmsqvss2t("hdmsqvss2t", ";sin^{2}2#theta_{#mu#mu};#Deltam^{2}", 50, 0, 1, 40, dmsqedges.data());
+    if(savetoroot) {
+        TFile fout(filename.c_str(), "RECREATE");
+        fout.cd();
+        double chi2_osc, chi2_syst, best_dmsq, best_sinsq2t;
+        std::map<std::string, double> best_systs_osc, best_systs, syst_throw;
+        TTree tree("tree", "tree");
+        tree.Branch("chi2_osc", &chi2_osc); 
+        tree.Branch("chi2_syst", &chi2_syst); 
+        tree.Branch("best_dmsq", &best_dmsq); 
+        tree.Branch("best_sinsq2t", &best_sinsq2t); 
+        tree.Branch("best_systs_osc", &best_systs_osc); 
+        tree.Branch("best_systs", &best_systs); 
+        tree.Branch("syst_throw", &syst_throw);
 
-    std::vector<double> flattened_dchi2s;
-    for(const auto& v: dchi2s) {
-        for(const auto& dchi2: v) {
-            flattened_dchi2s.push_back(dchi2);
-            hdchi2s.Fill(dchi2);
+        for(const auto &out: outs) {
+            for(const auto &fco: out) {
+                chi2_osc = fco.chi2_osc;
+                chi2_syst = fco.chi2_syst;
+                best_dmsq = fco.dmsq;
+                best_sinsq2t = fco.sinsq2tmm;
+                for(size_t i = 0; i < systs.GetNSplines(); ++i) {
+                    best_systs_osc[systs.spline_names[i]] = fco.best_fit_osc(i);
+                    best_systs[systs.spline_names[i]] = fco.best_fit_syst(i);
+                    syst_throw[systs.spline_names[i]] = fco.syst_throw(i);
+                }
+                tree.Fill();
+            }
+        }
+
+        tree.Write();
+    } else if(filename != "") {
+        ofstream fout(filename);
+        fout << "chi2_osc,chi2_syst,best_dmsq,best_sinsq2t";
+        for(const std::string &name: systs.sline_names) {
+            fout << ",best_" << name << "_osc,best_" << name << "," << name << "_throw";
+        }
+        fout << "\r\n";
+
+        for(const auto &out: outs) {
+            for(const auto &fco: out) {
+                fout << fco.chi2_osc << "," << fco.chi2_syst << "," << fco.dmsq << "," << fco.sinsq2tmm;
+                for(size_t i = 0; i < systs.GetNSplines(); ++i) {
+                    fout << fco.best_fit_osc(i) << "," << fco.best_fit_syst(i) << "," << fco.syst_throw(i);
+                }
+                fout << "\r\n";
+            }
         }
     }
-    for(const auto& out: outs) {
-      for(const auto& fco: out) {
-        hdmsqs.Fill(fco.dmsq);
-        hss2t.Fill(fco.sinsq2tmm);
-        hdmsqvss2t.Fill(fco.sinsq2tmm, fco.dmsq);
-      }
-    }
 
-    TCanvas c;
-    c.SetLogy();
-    hdchi2s.Draw("hist");
-    c.Print("dchi2s.pdf");
-    hss2t.Draw("hist");
-    c.Print("sinsq2tmm.pdf");
-    c.SetLogz();
-    hdmsqvss2t.Draw("colz");
-    c.Print("dmsq_v_sinsq2tmm.pdf");
-    c.SetLogx();
-    hdmsqs.Draw("hist");
-    c.Print("dmsqs.pdf");
-
+    std::vector<double> flattened_dchi2s;
+    for(const auto& v: dchi2s) for(const auto& dchi2: v) flattened_dchi2s.push_back(dchi2);
     std::sort(flattened_dchi2s.begin(), flattened_dchi2s.end());
-
     std::cout << "90% delta chi2: " << flattened_dchi2s[0.9*flattened_dchi2s.size()] << std::endl;
 
     return 0;
