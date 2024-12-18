@@ -18,8 +18,7 @@
 #include <random>
 #include <thread>
 
-#include "TH2D.h"
-#include "TStyle.h"
+#include "TTree.h"
 
 using namespace PROfit;
 
@@ -31,44 +30,35 @@ struct fc_out{
 };
 
 struct fc_args {
-    size_t todo;
+    const size_t todo;
     std::vector<double>* dchi2s;
     std::vector<fc_out>* out;
     const PROconfig config;
     const PROpeller prop;
-    PROsyst systs;
-    Eigen::VectorXd cv, err;
-    Eigen::MatrixXd L;
-    int thread;
+    const PROsyst systs;
+    const std::vector<float> phy_params;
+    const Eigen::MatrixXd L;
+    const int thread;
+    const bool binned;
 };
 
 void fc_worker(fc_args args) {
-    auto dchi2s = args.dchi2s;
-    auto out = args.out;
-    auto &config = args.config;
-    auto &prop = args.prop;
-    auto &systs = args.systs;
-    auto &cv = args.cv;
-    //auto &err = args.err;
-    auto &L = args.L;
     std::random_device rd{};
     std::mt19937 rng{rd()};
-    PROsc osc(prop);
-    while(dchi2s->size() < args.todo) {
-        std::cout << "Thread #" << args.thread << " Size " << dchi2s->size() << "\n";
+    PROsc osc(args.prop);
+    PROchi::EvalStrategy strat = args.binned ? PROchi::BinnedChi2 : PROchi::EventByEvent;
+    for(size_t u = 0; u < args.todo; ++u) {
+        log<LOG_INFO>(L"%1% | Thread #%2% Throw #%3%") % __func__ % args.thread % u;
         std::normal_distribution<float> d;
         std::vector<float> throws;
-        Eigen::VectorXd throwC = Eigen::VectorXd::Constant(cv.size(), 0);
-        for(size_t i = 0; i < systs.GetNSplines(); i++)
+        Eigen::VectorXd throwC = Eigen::VectorXd::Constant(args.config.m_num_bins_total, 0);
+        for(size_t i = 0; i < args.systs.GetNSplines(); i++)
             throws.push_back(d(rng));
-        for(size_t i = 0; i < (size_t)cv.size(); i++)
+        for(size_t i = 0; i < args.config.m_num_bins_total; i++)
             throwC(i) = d(rng);
-        //PROspec shifted = systs.GetSplineShiftedSpectrum(config, prop, throws);
-        std::vector<float> phy;
-        phy.push_back(std::log10(4.0f));
-        phy.push_back(std::log10(0.2f));
-        PROspec shifted = FillRecoSpectra(config, prop, systs, &osc, throws, phy);
-        PROspec newSpec = PROspec::PoissonVariation(PROspec(shifted.Spec() + L * throwC, shifted.Error()));
+        PROspec shifted = FillRecoSpectra(args.config, args.prop, args.systs, &osc, throws, args.phy_params, strat);
+        std::cout << "Num total bins " << args.config.m_num_bins_total << " Num spectrum bins " << shifted.Spec().size() << std::endl;
+        PROspec newSpec = PROspec::PoissonVariation(PROspec(shifted.Spec() + args.L * throwC, shifted.Error()));
 
         // No oscillations
         LBFGSpp::LBFGSBParam<double> param;  
@@ -77,12 +67,12 @@ void fc_worker(fc_args args) {
         param.max_linesearch = 50;
         param.delta = 1e-6;
 
-        size_t nparams = systs.GetNSplines();
+        size_t nparams = args.systs.GetNSplines();
         Eigen::VectorXd lb = Eigen::VectorXd::Constant(nparams, -3.0);
         Eigen::VectorXd ub = Eigen::VectorXd::Constant(nparams, 3.0);
         PROfitter fitter(ub, lb, param);
 
-        PROchi chi("3plus1",&config,&prop,&systs,&osc, newSpec, nparams, systs.GetNSplines(), PROchi::BinnedChi2);
+        PROchi chi("3plus1",&args.config,&args.prop,&args.systs,&osc, newSpec, nparams, args.systs.GetNSplines(), strat);
         double chi2_syst = fitter.Fit(chi);
 
         // With oscillations
@@ -92,37 +82,39 @@ void fc_worker(fc_args args) {
         param_osc.max_linesearch = 250;
         param_osc.delta = 1e-6;
 
-        nparams = 2 + systs.GetNSplines();
+        nparams = 2 + args.systs.GetNSplines();
         Eigen::VectorXd lb_osc = Eigen::VectorXd::Constant(nparams, -3.0);
         lb_osc(0) = -2; lb_osc(1) = -std::numeric_limits<double>::infinity();
         Eigen::VectorXd ub_osc = Eigen::VectorXd::Constant(nparams, 3.0);
         ub_osc(0) = 2; ub_osc(1) = 0;
         PROfitter fitter_osc(ub_osc, lb_osc, param);
 
-        PROchi chi_osc("3plus1",&config,&prop,&systs,&osc, newSpec, nparams, systs.GetNSplines(), PROchi::BinnedChi2);
+        PROchi chi_osc("3plus1",&args.config,&args.prop,&args.systs,&osc, newSpec, nparams, args.systs.GetNSplines(), strat);
         double chi2_osc = fitter_osc.Fit(chi_osc); 
 
         Eigen::VectorXd t = Eigen::VectorXd::Constant(throws.size(), 0);
         for(size_t i = 0; i < throws.size(); i++) t(i) = throws[i];
 
-        out->push_back({
+        args.out->push_back({
                 chi2_syst, chi2_osc, 
                 std::pow(10, fitter_osc.best_fit(0)), std::pow(10, fitter_osc.best_fit(1)), 
                 fitter.best_fit, fitter_osc.best_fit.segment(2, nparams-2), t
         });
 
-        dchi2s->push_back(std::abs(chi2_syst - chi2_osc ));
+        args.dchi2s->push_back(std::abs(chi2_syst - chi2_osc ));
     }
 }
 
 int main(int argc, char* argv[])
 {
+    CLI::App app{"Test for PROfit"}; 
+
     std::string xmlname, filename;
     int maxevents;
     size_t  nthread, nfit;
     std::array<float, 2> injected_pt{0, 0};
     std::vector<std::string> syst_list, systs_excluded;
-    bool eventbyevent=false, statonly = false;
+    bool eventbyevent=false;
 
     app.add_option("-x, --xml",       xmlname,        "Input PROfit XML config.")->required();
     app.add_option("-n, --nfit",      nfit,           "Number of fits.")->required();
@@ -135,7 +127,6 @@ int main(int argc, char* argv[])
     app.add_option("--exclude-systs", systs_excluded, "List of systematics to exclude.")->excludes("--syst-list"); 
 
     app.add_flag("--event-by-event",  eventbyevent,   "Do you want to weight event-by-event?");
-    app.add_flag("-s, --statonly",    statonly,       "Run a stats only surface instead of fitting systematics");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -155,12 +146,6 @@ int main(int argc, char* argv[])
 
     std::vector<float> pparams = {std::log10(injected_pt[0]), std::log10(injected_pt[1])};
     log<LOG_INFO>(L"%1% | Injected point: sinsq2t = %2% and dmsq = %3%\n") % __func__ % injected_pt[0] % injected_pt[1];
-    for(const auto& [name, shift]: injected_systs)
-      log<LOG_INFO>(L"%1% | Injected shift: %2% shifted by %3%\n") % __func__ % name % shift;
-
-    PROspec data = injected_pt[0] != 0 && injected_pt[1] != 0 ? FillRecoSpectra(config, prop, systs, &osc, injected_systs, pparams, !eventbyevent) :
-                   injected_systs.size() ? FillRecoSpectra(config, prop, systs, injected_systs, !eventbyevent) :
-                   FillCVSpectrum(config, prop, !eventbyevent);
 
     if(syst_list.size()) {
       systs = systs.subset(syst_list);
@@ -168,22 +153,21 @@ int main(int argc, char* argv[])
       systs = systs.excluding(systs_excluded);
     }
 
-    Eigen::VectorXd data = systsstructs.back().CV().Spec();
-    Eigen::VectorXd err = systsstructs.back().CV().Error();
-    Eigen::MatrixXd diag = data.array().matrix().asDiagonal();
+    Eigen::MatrixXd diag = FillCVSpectrum(myConf, myprop, !eventbyevent).Spec().array().matrix().asDiagonal();
     Eigen::MatrixXd full_cov = diag * systs.fractional_covariance * diag;
-    Eigen::LLT<Eigen::MatrixXd> llt(CollapseMatrix(myConf, full_cov));
+    Eigen::LLT<Eigen::MatrixXd> llt(full_cov);
     
     std::vector<std::vector<double>> dchi2s;
     dchi2s.reserve(nthread);
     std::vector<std::vector<fc_out>> outs;
     outs.reserve(nthread);
     std::vector<std::thread> threads;
+    size_t todo = nfit/nthread;
+    size_t addone = nthread - nfit%nthread;
     for(size_t i = 0; i < nthread; i++) {
         dchi2s.emplace_back();
         outs.emplace_back();
-        // TODO: nfit/nthread is not correct if nthread does not evenly divide nfit
-        fc_args args{nfit/nthread, &dchi2s.back(), &outs.back(), myConf, myprop, systs, data, err, llt.matrixL(), (int)i};
+        fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), myConf, myprop, systs, pparams, llt.matrixL(), (int)i, !eventbyevent};
         threads.emplace_back(fc_worker, args);
     }
     for(auto&& t: threads) {
@@ -223,7 +207,7 @@ int main(int argc, char* argv[])
     } else if(filename != "") {
         ofstream fout(filename);
         fout << "chi2_osc,chi2_syst,best_dmsq,best_sinsq2t";
-        for(const std::string &name: systs.sline_names) {
+        for(const std::string &name: systs.spline_names) {
             fout << ",best_" << name << "_osc,best_" << name << "," << name << "_throw";
         }
         fout << "\r\n";
