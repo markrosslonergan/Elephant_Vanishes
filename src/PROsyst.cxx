@@ -28,17 +28,21 @@ namespace PROfit {
 
     PROsyst PROsyst::subset(const std::vector<std::string> &systs) {
         PROsyst ret;
+        log<LOG_DEBUG>(L"%1% | Creating a subset with a list of %2% systematics.") % __func__ % systs.size();
         for(const std::string &name: systs) {
+            log<LOG_DEBUG>(L"%1% | Looking up systematic %2% from subset list.") % __func__ % name.c_str();
             const auto &[idx, stype] = syst_map[name];
             switch(stype) {
             case SystType::Spline:
                 ret.syst_map[name] = std::make_pair(ret.splines.size(), SystType::Spline);
                 ret.spline_names.push_back(name);
                 ret.splines.push_back(splines[idx]);
+                break;
             case SystType::Covariance:
                 ret.syst_map[name] = std::make_pair(ret.covmat.size(), SystType::Covariance);
                 ret.covmat.push_back(covmat[idx]);
                 ret.corrmat.push_back(corrmat[idx]);
+                break;
             }
         }
         ret.fractional_covariance = ret.SumMatrices();
@@ -55,10 +59,12 @@ namespace PROfit {
                 ret.syst_map[name] = std::make_pair(ret.splines.size(), SystType::Spline);
                 ret.spline_names.push_back(name);
                 ret.splines.push_back(splines[idx]);
+                break;
             case SystType::Covariance:
                 ret.syst_map[name] = std::make_pair(ret.covmat.size(), SystType::Covariance);
                 ret.covmat.push_back(covmat[idx]);
                 ret.corrmat.push_back(corrmat[idx]);
+                break;
             }
         }
         ret.fractional_covariance = ret.SumMatrices();

@@ -49,7 +49,7 @@ double PROchi::operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradien
     //std::cout<<collapsed_stat_covariance<<std::endl;
     
     //only calculate a syst covariance if we have any covariance parameters as defined in the xml
-    if(config->m_num_variation_type_covariance > 0){
+    if(syst->GetNCovar()){
 
       // Calculate Full Syst Covariance matrix
       Eigen::MatrixXd diag = result.Spec().array().matrix().asDiagonal(); 
@@ -117,7 +117,7 @@ double PROchi::operator()(const Eigen::VectorXd &param, Eigen::VectorXd &gradien
             Eigen::MatrixXd collapsed_stat_covariance = CollapseMatrix(*config, stat_covariance); 
             Eigen::MatrixXd inverted_collapsed_full_covariance(config->m_num_bins_total_collapsed,config->m_num_bins_total_collapsed);
 
-            if(config->m_num_variation_type_covariance > 0){
+            if(syst->GetNCovar()){
 
                 Eigen::MatrixXd diag = result.Spec().array().matrix().asDiagonal(); 
                 Eigen::MatrixXd full_covariance =  diag*(syst->fractional_covariance)*diag;

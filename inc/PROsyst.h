@@ -45,6 +45,8 @@ namespace PROfit {
 
             size_t GetNSplines() { return splines.size(); }
 
+            size_t GetNCovar() const { return covmat.size(); }
+
             //----- Spline and Covariance matrix related ---
             //----- Spline and Covariance matrix related ---
 
