@@ -1,4 +1,5 @@
 #include "PROspec.h"
+#include "PROtocall.h"
 
 #include <random>
 
@@ -58,24 +59,37 @@ void PROspec::QuickFill(int bin_index, double weight){
 }
 
 
-TH1D PROspec::toTH1D(PROconfig const & inconfig, int subchannel_index) const{
+TH1D PROspec::toTH1D(PROconfig const & inconfig, int subchannel_index, int reco_dim) const{
 
     int global_bin_start = inconfig.GetGlobalBinStart(subchannel_index);
     int channel_index = inconfig.GetChannelIndex(subchannel_index);
 
     //set up hist specs
     int nbins = inconfig.m_channel_num_bins[channel_index];
-    const std::vector<double>& bin_edges = inconfig.GetChannelBinEdges(channel_index);
+    const std::vector<double>& bin_edges = inconfig.GetChannelBinEdges(channel_index, reco_dim);
     std::string hist_name = inconfig.m_fullnames[subchannel_index];
     std::string xaxis_title = inconfig.m_channel_units[channel_index];
 
-
     //fill 1D hist
-    TH1D hSpec(hist_name.c_str(),hist_name.c_str(), nbins, &bin_edges[0]); 
+    TH1D hSpec(hist_name.c_str(),hist_name.c_str(), bin_edges.size()-1, &bin_edges[0]); 
     hSpec.GetXaxis()->SetTitle(xaxis_title.c_str());
-    for(int i = 1; i <= nbins; ++i){
-        hSpec.SetBinContent(i, spec(global_bin_start + i -1));
-        hSpec.SetBinError(i, error(global_bin_start + i -1));
+
+    std::vector<double> Ns(bin_edges.size()-1, 0);
+    std::vector<double> errs(bin_edges.size()-1, 0);
+
+    // Sum up (projected) reco values
+    for (int i = 0; i < nbins; i++) {
+        double N = spec(global_bin_start + i);
+        double E = error(global_bin_start + i);
+
+        int projected_bin = ProjectedBin(inconfig, channel_index, reco_dim, i);
+        Ns[projected_bin] += N;
+        errs[projected_bin] = sqrt(errs[projected_bin]*errs[projected_bin] + E*E); // errs sum in quadrature
+    }
+
+    for(unsigned i = 1; i <= Ns.size(); ++i){
+        hSpec.SetBinContent(i, Ns[i-1]);
+        hSpec.SetBinError(i, errs[i-1]);
     }
 
     return hSpec;
@@ -83,9 +97,9 @@ TH1D PROspec::toTH1D(PROconfig const & inconfig, int subchannel_index) const{
 }
 
 
-TH1D PROspec::toTH1D(const PROconfig& inconfig, const std::string& subchannel_fullname) const{
+TH1D PROspec::toTH1D(const PROconfig& inconfig, const std::string& subchannel_fullname, int reco_dim) const{
     int subchannel_index = inconfig.GetSubchannelIndex(subchannel_fullname);
-    return this->toTH1D(inconfig, subchannel_index);
+    return this->toTH1D(inconfig, subchannel_index, reco_dim);
 }
 
 
