@@ -14,17 +14,22 @@
 namespace PROfit{
 
 
+    /* Function: given a local bin value, return the bin projected onto the dimension of the 
+     * reconstructed variable(s) given by reco_dim
+     */
+    int ProjectedBin(const PROconfig &inconfig, int channel_index, int reco_dim, int local_bin);
+
     /* Function: given a value for reconstructed variable, figure out which local bin in the histogram it belongs to
      * Note: bin index start from 0, not 1
      * Note: return value of -1 means the reco value is out of range
      */
-    int FindLocalBin(const PROconfig &inconfig, double reco_value, int channel_index);
+    int FindLocalBin(const PROconfig &inconfig, const std::vector<double> &reco_value, int channel_index);
     /* Function: given a value for reconstructed variable, figure out which global bin it belongs to
      * Note: bin index start from 0, not 1
      * Note: if  the reco value is out of range, then return value of -1
      */
-    int FindGlobalBin(const PROconfig &inconfig, double reco_value, int subchannel_index);
-    int FindGlobalBin(const PROconfig &inconfig, double reco_value, const std::string& subchannel_fullname);
+    int FindGlobalBin(const PROconfig &inconfig, const std::vector<double> &reco_value, int subchannel_index);
+    int FindGlobalBin(const PROconfig &inconfig, const std::vector<double> &reco_value, const std::string& subchannel_fullname);
 
     /* Function: given a value for true variable, figure out which local bin in the histogram it belongs to
      * Note: bin index start from 0, not 1

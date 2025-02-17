@@ -151,9 +151,10 @@ namespace PROfit {
                     exit(EXIT_FAILURE);
                 }
 
-                branch_variable->branch_formula = std::make_shared<TTreeFormula>(("branch_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), branch_variable->name.c_str(), trees[fid]);
-                log<LOG_INFO>(L"%1% || Setting up reco variable for this branch: %2%") % __func__ %  branch_variable->name.c_str();
-
+                for (const std::string &name: branch_variable->names) {
+                    branch_variable->branch_formulas.push_back(std::make_shared<TTreeFormula>(("branch_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), name.c_str(), trees[fid]));
+                    log<LOG_INFO>(L"%1% || Setting up reco variable for this branch: %2%") % __func__ %  name.c_str();
+                }
 
                 //grab monte carlo weight
                 if(inconfig.m_mcgen_additional_weight_bool[fid][ib]){
@@ -401,8 +402,11 @@ namespace PROfit {
                     exit(EXIT_FAILURE);
                 }
 
-                branch_variable->branch_formula = std::make_shared<TTreeFormula>(("branch_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), branch_variable->name.c_str(), trees[fid]);
-                log<LOG_INFO>(L"%1% || Setting up reco variable for this branch: %2%") % __func__ %  branch_variable->name.c_str();
+                for (const std::string &name: branch_variable->names) {
+                    branch_variable->branch_formulas.push_back(std::make_shared<TTreeFormula>(("branch_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), name.c_str(), trees[fid]));
+                    log<LOG_INFO>(L"%1% || Setting up reco variable for this branch: %2%") % __func__ %  name.c_str();
+                }
+
                 branch_variable->branch_true_L_formula = std::make_shared<TTreeFormula>(("branch_L_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), branch_variable->true_L_name.c_str(), trees[fid]);
                 log<LOG_INFO>(L"%1% || Setting up L variable for this branch: %2%") % __func__ %  branch_variable->true_L_name.c_str();
                 branch_variable->branch_true_value_formula = std::make_shared<TTreeFormula>(("branch_true_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), branch_variable->true_param_name.c_str(), trees[fid]);
@@ -730,8 +734,10 @@ namespace PROfit {
                     exit(EXIT_FAILURE);
                 }
 
-                branch_variable->branch_formula = std::make_shared<TTreeFormula>(("branch_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), branch_variable->name.c_str(), trees[fid]);
-                log<LOG_INFO>(L"%1% || Setting up reco variable for this branch: %2%") % __func__ %  branch_variable->name.c_str();
+                for (const std::string &name: branch_variable->names) {
+                    branch_variable->branch_formulas.push_back(std::make_shared<TTreeFormula>(("branch_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), name.c_str(), trees[fid]));
+                    log<LOG_INFO>(L"%1% || Setting up reco variable for this branch: %2%") % __func__ %  name.c_str();
+                }
 
                 branch_variable->branch_true_pdg_formula  =  std::make_shared<TTreeFormula>(("branch_add_pdg_"+std::to_string(fid)+"_" + std::to_string(ib)).c_str(),branch_variable->pdg_name.c_str(),trees[fid]);
                 branch_variable->branch_true_value_formula  =  std::make_shared<TTreeFormula>(("branch_add_trueE_"+std::to_string(fid)+"_" + std::to_string(ib)).c_str(),branch_variable->true_param_name.c_str(),trees[fid]);
@@ -857,7 +863,7 @@ namespace PROfit {
                 if(i%1000==0)log<LOG_DEBUG>(L"%1% || ---- universe %2%/%3% ") % __func__  % files[fid]->GetName() % nevents ;
 
                 for(int ib = 0; ib != num_branch; ++ib) {
-                    double reco_value = branches[ib]->GetValue<double>();
+                    std::vector<double> reco_value = branches[ib]->GetValues<double>();
                     float additional_weight = branches[ib]->GetMonteCarloWeight();
                     //additional_weight *= pot_scale[fid]; POT NOT YET FIX
                     int global_bin = FindGlobalBin(inconfig, reco_value, subchannel_index[ib]);
@@ -867,12 +873,16 @@ namespace PROfit {
                     int global_true_bin = FindGlobalTrueBin(inconfig, baseline / true_param, subchannel_index[ib]);
                     int model_rule = branches[ib]->GetModelRule();
 
-                    log<LOG_DEBUG>(L"%1% || Reco and True E values: %2% and  %3%") % __func__ % reco_value % true_param;
+                    log<LOG_DEBUG>(L"%1% || Reco and True E values: %2% and  %3%") % __func__ % reco_value[0] % true_param;
 
                     if(additional_weight == 0 || global_bin < 0)
                         continue;
 
-                    inprop.reco.push_back((float)reco_value);
+                    for (unsigned ir = 0; ir < reco_value.size(); ir++) {
+                      if (inprop.recos.size() <= ir) inprop.recos.push_back({});
+                      inprop.recos[ir].push_back(reco_value[ir]);
+                    }
+
                     inprop.added_weights.push_back(additional_weight);
                     inprop.bin_indices.push_back(global_bin);
                     inprop.pdg.push_back(pdg_id);
@@ -1027,9 +1037,10 @@ namespace PROfit {
                     exit(EXIT_FAILURE);
                 }
 
-                branch_variable->branch_formula = std::make_shared<TTreeFormula>(("branch_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), branch_variable->name.c_str(), trees[fid]);
-                log<LOG_INFO>(L"%1% || Setting up reco variable for this branch: %2%") % __func__ %  branch_variable->name.c_str();
-
+                for (const std::string &name: branch_variable->names) {
+                    branch_variable->branch_formulas.push_back(std::make_shared<TTreeFormula>(("branch_form_"+std::to_string(fid) +"_" + std::to_string(ib)).c_str(), name.c_str(), trees[fid]));
+                    log<LOG_INFO>(L"%1% || Setting up reco variable for this branch: %2%") % __func__ %  name.c_str();
+                }
 
                 //grab monte carlo weight
                 if(inconfig.m_mcgen_additional_weight_bool[fid][ib]){
@@ -1075,7 +1086,7 @@ namespace PROfit {
                 for(int ib = 0; ib != num_branch; ++ib) {
 
                     //guanqun: why have different types for branch_variables 
-                    double reco_value = branches[ib]->GetValue<double>();
+                    std::vector<double> reco_value = branches[ib]->GetValues<double>();
                     double additional_weight = branches[ib]->GetMonteCarloWeight();
                     additional_weight *= pot_scale[fid];
 
@@ -1088,7 +1099,7 @@ namespace PROfit {
                         continue;
 
                     if(i%100==0)	
-                        log<LOG_DEBUG>(L"%1% || Subchannel %2% -- Reco variable value: %3%, MC event weight: %4%, correponds to global bin: %5%") % __func__ %  subchannel_index[ib] % reco_value % additional_weight % global_bin;
+                        log<LOG_DEBUG>(L"%1% || Subchannel %2% -- Reco variable value: %3%, MC event weight: %4%, correponds to global bin: %5%") % __func__ %  subchannel_index[ib] % reco_value[0] % additional_weight % global_bin;
 
                     spec.Fill(global_bin, additional_weight);
 
@@ -1108,7 +1119,7 @@ namespace PROfit {
     void process_cafana_event(const PROconfig &inconfig, const std::shared_ptr<BranchVariable>& branch, const std::map<std::string, std::vector<eweight_type>*>& eventweight_map, double mcpot, int subchannel_index, std::vector<SystStruct>& syst_vector, const std::vector<double>& syst_additional_weight, PROpeller& inprop){
 
         int total_num_sys = syst_vector.size(); 
-      	double reco_value = branch->GetValue<double>();
+      	std::vector<double> reco_value = branch->GetValues<double>();
         double true_param = branch->GetTrueValue<double>();
         double baseline = branch->GetTrueL<double>();
         double true_value = baseline / true_param;
@@ -1125,7 +1136,11 @@ namespace PROfit {
         if(global_true_bin < 0)
             return;
 
-        inprop.reco.push_back((float)reco_value);
+        for (unsigned ir = 0; ir < reco_value.size(); ir++) {
+            if (inprop.recos.size() <= ir) inprop.recos.push_back({});
+            inprop.recos[ir].push_back(reco_value[ir]);
+        }
+
         inprop.added_weights.push_back(mc_weight);
         inprop.bin_indices.push_back(global_bin);
         inprop.pdg.push_back(pdg_id);
@@ -1170,7 +1185,7 @@ namespace PROfit {
     void process_sbnfit_event(const PROconfig &inconfig, const std::shared_ptr<BranchVariable>& branch, const std::map<std::string, std::vector<eweight_type>>& eventweight_map, int subchannel_index, std::vector<SystStruct>& syst_vector, const std::vector<double>& syst_additional_weight){
 
         int total_num_sys = syst_vector.size(); 
-        double reco_value = branch->GetValue<double>();
+        std::vector<double> reco_value = branch->GetValues<double>();
         double mc_weight = branch->GetMonteCarloWeight();
         int global_bin = FindGlobalBin(inconfig, reco_value, subchannel_index);
         if(global_bin < 0 )  //out of range

@@ -53,13 +53,13 @@ namespace PROfit{
      */
 
     struct BranchVariable{
-        std::string name;
+        std::vector<std::string> names;
         std::string type;
         std::string associated_hist;
         std::string associated_systematic;
         bool central_value;
 
-        std::shared_ptr<TTreeFormula> branch_formula=nullptr;
+        std::vector<std::shared_ptr<TTreeFormula>> branch_formulas;
         std::shared_ptr<TTreeFormula> branch_monte_carlo_weight_formula = nullptr;
         std::shared_ptr<TTreeFormula> branch_true_value_formula=nullptr;
         std::shared_ptr<TTreeFormula> branch_true_L_formula=nullptr;
@@ -73,12 +73,12 @@ namespace PROfit{
         int include_systematics;
 
         //constructor
-        BranchVariable(std::string n, std::string t, std::string a) : name(n), type(t), associated_hist(a), central_value(false), oscillate(false), model_rule(-9), include_systematics(1){}
-        BranchVariable(std::string n, std::string t, std::string a_hist, std::string a_syst, bool cv) : name(n), type(t), associated_hist(a_hist), associated_systematic(a_syst), central_value(cv), oscillate(false), model_rule(-9),include_systematics(1){}
+        BranchVariable(std::vector<std::string> ns, std::string t, std::string a) : names(ns), type(t), associated_hist(a), central_value(false), oscillate(false), model_rule(-9), include_systematics(1){}
+        BranchVariable(std::vector<std::string> ns, std::string t, std::string a_hist, std::string a_syst, bool cv) : names(ns), type(t), associated_hist(a_hist), associated_systematic(a_syst), central_value(cv), oscillate(false), model_rule(-9),include_systematics(1){}
 
         /* Function: Return the TTreeformula for branch 'name', usually it's the reconstructed variable */
-        std::shared_ptr<TTreeFormula> GetFormula(){
-            return branch_formula;
+        std::vector<std::shared_ptr<TTreeFormula>> GetFormulas(){
+            return branch_formulas;
         }
 
         void SetOscillate(bool inbool){ oscillate = inbool; return;}
@@ -118,7 +118,7 @@ namespace PROfit{
         //Function: evaluate branch 'name' and return the value. Usually its reconstructed quantity
         //Note: when called, if the corresponding TreeFormula is not linked to a TTree, value of ZERO (0) will be returned.
         template <typename T=double>
-            T GetValue() const;
+            std::vector<T> GetValues() const;
 
 
         //Function: evaluate formula 'true_L_name' and return the value. Usually it's true baseline.
@@ -217,8 +217,10 @@ namespace PROfit{
             /*Vectors of length num_channels. Unless specificed all refer to fittable (reco) variables*/
             std::vector<size_t> m_num_subchannels; 
             std::vector<size_t> m_channel_num_bins;
-            std::vector<std::vector<double> > m_channel_bin_edges;
-            std::vector<std::vector<double> > m_channel_bin_widths;
+            std::vector<std::vector<size_t>> m_channel_num_bins_pervar;
+            std::vector<std::vector<size_t>> m_channel_strides_pervar;
+            std::vector<std::vector<std::vector<double> > > m_channel_bin_edges;
+            std::vector<std::vector<std::vector<double> > > m_channel_bin_widths;
 
             /* New true bins to save the truth level variables in addition.*/
             std::vector<size_t> m_channel_num_truebins;
@@ -351,7 +353,7 @@ namespace PROfit{
             size_t GetCollapsedGlobalBinStart(size_t channel_index) const;
 
             /* Function: given channel index, return list of bin edges for this channel */
-            const std::vector<double>& GetChannelBinEdges(size_t channel_index) const;
+            const std::vector<double>& GetChannelBinEdges(size_t channel_index, size_t reco_index) const;
 
             /* Function: given channel index, return number of true bins for this channel */
             size_t GetChannelNTrueBins(size_t channel_index) const;
@@ -385,11 +387,12 @@ namespace PROfit{
 
 
     template <typename T>
-        T BranchVariable::GetValue() const{
-            if(branch_formula == NULL) return static_cast<T>(0);
+        std::vector<T> BranchVariable::GetValues() const{
+            if(branch_formulas.size() == 0) return {static_cast<T>(0)};
             else{
-                branch_formula->GetNdata();
-                return static_cast<T>(branch_formula->EvalInstance());
+                std::vector<T> ret;
+                for (auto const &b: branch_formulas) ret.push_back(static_cast<T>(b->EvalInstance()));
+                return ret;
             }
         }
 

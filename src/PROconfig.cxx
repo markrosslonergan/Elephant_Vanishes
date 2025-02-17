@@ -224,28 +224,41 @@ int PROconfig::LoadFromXML(const std::string &filename){
 
             // What are the bin edges and bin widths (bin widths just calculated from edges now)
             tinyxml2::XMLElement *pBin = pChan->FirstChildElement("bins");
-            std::stringstream iss(pBin->Attribute("edges"));
+            m_channel_bin_edges.push_back({});
+            m_channel_bin_widths.push_back({});
+            m_channel_num_bins_pervar.push_back({});
+            m_channel_strides_pervar.push_back({});
+            while (pBin) {
+                std::stringstream iss(pBin->Attribute("edges"));
 
-            double number;
-            std::vector<double> binedge;
-            std::vector<double> binwidth;
-            std::string binstring = "";
-            while ( iss >> number ){
-                binedge.push_back( number );
-                binstring+=" "+std::to_string(number);
+                double number;
+                std::vector<double> binedge;
+                std::vector<double> binwidth;
+                std::string binstring = "";
+                while ( iss >> number ){
+                    binedge.push_back( number );
+                    binstring+=" "+std::to_string(number);
+                }
+
+                log<LOG_DEBUG>(L"%1% || Loading Bins with edges %2%  ") % __func__ % binstring.c_str();
+
+                for(size_t b = 0; b<binedge.size()-1; b++){
+                    binwidth.push_back(fabs(binedge.at(b)-binedge.at(b+1)));
+                }
+
+                m_channel_bin_edges.back().push_back(binedge);
+                m_channel_bin_widths.back().push_back(binwidth);
+                pBin = pBin->NextSiblingElement("bins");
             }
 
-            log<LOG_DEBUG>(L"%1% || Loading Bins with edges %2%  ") % __func__ % binstring.c_str();
-
-            for(size_t b = 0; b<binedge.size()-1; b++){
-                binwidth.push_back(fabs(binedge.at(b)-binedge.at(b+1)));
+            size_t stride = 1;
+            for (auto const &edges: m_channel_bin_edges.back()) {
+                size_t nbin = edges.size() - 1;
+                stride *= nbin;
+                m_channel_num_bins_pervar.back().push_back(nbin);
+                m_channel_strides_pervar.back().push_back(stride);
             }
-
-            m_channel_num_bins.push_back(binedge.size()-1);
-
-            m_channel_bin_edges.push_back(binedge);
-            m_channel_bin_widths.push_back(binwidth);
-
+            m_channel_num_bins.push_back(stride);
 
             tinyxml2::XMLElement *pBinT = pChan->FirstChildElement("truebins");
             if(pBinT){
@@ -525,15 +538,18 @@ int PROconfig::LoadFromXML(const std::string &filename){
 
                 }
 
-
+                    std::stringstream tup(bnam);
+                    std::string s;
+                    std::vector<std::string> bnams;
+                    while (getline(tup, s, ':')) bnams.push_back(s);
 
                     if(use_universe){
-                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnam, "double", bhist ) );
+                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnams, "double", bhist ) );
                     } else  if((std::string)bcentral == "true"){
-                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnam, "double", bhist,bsyst, true) );
+                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnams, "double", bhist,bsyst, true) );
                         log<LOG_DEBUG>(L"%1% || Setting as  CV for det sys.") % __func__ ;
                     } else {
-                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnam, "double", bhist,bsyst, false) );
+                        TEMP_branch_variables.push_back( std::make_shared<BranchVariable>(bnams, "double", bhist,bsyst, false) );
                         log<LOG_DEBUG>(L"%1% || Setting as individual (not CV) for det sys.") % __func__ ;
                     }
 
@@ -823,7 +839,7 @@ int PROconfig::LoadFromXML(const std::string &filename){
         log<LOG_INFO>(L"%1% || num_channels: %2% ") % __func__ % m_num_channels;
         for(size_t i = 0 ; i!=m_num_channels; ++i){
             log<LOG_INFO>(L"%1% || num of subchannels: %2% ") % __func__ % m_num_subchannels[i];
-            log<LOG_INFO>(L"%1% || num of bins: %2% ") % __func__ % m_channel_num_bins[i];
+            log<LOG_INFO>(L"%1% || num of bins: %3% ") % __func__ % m_channel_num_bins[i];
 
         }
         log<LOG_INFO>(L"%1% || num_bins_detector_block: %2%") % __func__ % m_num_bins_detector_block;
@@ -911,7 +927,7 @@ int PROconfig::LoadFromXML(const std::string &filename){
         return m_vec_subchannel_index[index];
     }
 
-    const std::vector<double>& PROconfig::GetChannelBinEdges(size_t channel_index) const{
+    const std::vector<double>& PROconfig::GetChannelBinEdges(size_t channel_index, size_t reco_index) const{
 
         if( channel_index >= m_num_channels){
             log<LOG_ERROR>(L"%1% || Given channel index: %2% is out of bound") % __func__ % channel_index;
@@ -919,8 +935,14 @@ int PROconfig::LoadFromXML(const std::string &filename){
             log<LOG_ERROR>(L"Terminating.");
             exit(EXIT_FAILURE);
         }
+        if (reco_index >= m_channel_bin_edges[channel_index].size()) {
+            log<LOG_ERROR>(L"%1% || Given reco index: %2% is out of bound for channel %3%") % __func__ % reco_index % channel_index;
+            log<LOG_ERROR>(L"%1% || Total number of reco variables : %2%") % __func__ % m_channel_bin_edges[channel_index].size();
+            log<LOG_ERROR>(L"Terminating.");
+            exit(EXIT_FAILURE);
+        }
 
-        return m_channel_bin_edges[channel_index];
+        return m_channel_bin_edges[channel_index][reco_index];
     }
 
     size_t PROconfig::GetChannelNTrueBins(size_t channel_index) const{
@@ -997,8 +1019,10 @@ int PROconfig::LoadFromXML(const std::string &filename){
 
             //update channel-related info
             std::vector<size_t> temp_channel_num_bins(m_num_channels, 0);
-            std::vector<std::vector<double>> temp_channel_bin_edges(m_num_channels, std::vector<double>());
-            std::vector<std::vector<double>> temp_channel_bin_widths(m_num_channels, std::vector<double>());
+            std::vector<std::vector<std::vector<double>>> temp_channel_bin_edges(m_num_channels, std::vector<std::vector<double>>());
+            std::vector<std::vector<std::vector<double>>> temp_channel_bin_widths(m_num_channels, std::vector<std::vector<double>>());
+            std::vector<std::vector<size_t>> temp_channel_num_bins_pervar(m_num_channels, std::vector<size_t>());
+            std::vector<std::vector<size_t>> temp_channel_strides_pervar(m_num_channels, std::vector<size_t>());
 
             std::vector<size_t> temp_channel_num_truebins(m_num_channels, 0);
             std::vector<std::vector<double>> temp_channel_truebin_edges(m_num_channels, std::vector<double>());
@@ -1012,6 +1036,8 @@ int PROconfig::LoadFromXML(const std::string &filename){
                     temp_channel_num_bins[chan_index] = m_channel_num_bins[i];
                     temp_channel_bin_edges[chan_index] = m_channel_bin_edges[i];
                     temp_channel_bin_widths[chan_index] = m_channel_bin_widths[i];
+                    temp_channel_num_bins_pervar[chan_index] = m_channel_num_bins_pervar[i];
+                    temp_channel_strides_pervar[chan_index] = m_channel_strides_pervar[i];
 
                     temp_channel_num_truebins[chan_index] = m_channel_num_truebins[i];
                     temp_channel_truebin_edges[chan_index] = m_channel_truebin_edges[i];
@@ -1028,6 +1054,8 @@ int PROconfig::LoadFromXML(const std::string &filename){
             m_channel_num_bins = temp_channel_num_bins;
             m_channel_bin_edges = temp_channel_bin_edges;
             m_channel_bin_widths = temp_channel_bin_widths;
+            m_channel_num_bins_pervar = temp_channel_num_bins_pervar;
+            m_channel_strides_pervar = temp_channel_strides_pervar;
             m_channel_num_truebins = temp_channel_num_truebins;
             m_channel_truebin_edges = temp_channel_truebin_edges;
             m_channel_truebin_widths = temp_channel_truebin_widths;

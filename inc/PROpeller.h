@@ -26,7 +26,7 @@ namespace PROfit{
             PROpeller(){
                 nevents = -1;
                 truth.clear();
-                reco.clear();
+                recos.clear();
                 baseline.clear();
                 pdg.clear();
                 added_weights.clear();
@@ -36,7 +36,7 @@ namespace PROfit{
             }
 
             /*Function: Primary Constructor from raw std::vectors of MC values */ 
-            PROpeller(const PROconfig &config, std::vector<float> &intruth, std::vector<float> &inreco, std::vector<float> &inbaseline, std::vector<int> &inpdg, std::vector<float> &inadded_weights, std::vector<int> &inbin_indices, std::vector<int> &inmodel_rule, std::vector<int> &intrue_bin_indices) : truth(intruth), reco(inreco), baseline(inbaseline), pdg(inpdg), added_weights(inadded_weights), bin_indices(inbin_indices), model_rule(inmodel_rule), true_bin_indices(intrue_bin_indices){
+            PROpeller(const PROconfig &config, std::vector<float> &intruth, std::vector<std::vector<float>> &inrecos, std::vector<float> &inbaseline, std::vector<int> &inpdg, std::vector<float> &inadded_weights, std::vector<int> &inbin_indices, std::vector<int> &inmodel_rule, std::vector<int> &intrue_bin_indices) : truth(intruth), recos(inrecos), baseline(inbaseline), pdg(inpdg), added_weights(inadded_weights), bin_indices(inbin_indices), model_rule(inmodel_rule), true_bin_indices(intrue_bin_indices){
                 nevents = truth.size();
                 hist = Eigen::MatrixXd::Constant(config.m_num_truebins_total, config.m_num_bins_total, 0);
                 for(size_t i = 0; i < bin_indices.size(); ++i)
@@ -45,7 +45,7 @@ namespace PROfit{
 
             /* the Core MC is saved in these vectors.*/
             std::vector<float> truth;
-            std::vector<float> reco;
+            std::vector<std::vector<float>> recos;
             std::vector<float> baseline;
             std::vector<int>   pdg;
             std::vector<float> added_weights;
