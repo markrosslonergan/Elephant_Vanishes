@@ -33,6 +33,7 @@ int main(int argc, char* argv[])
     std::map<std::string, float> injected_systs;
     int maxevents = 100;
     size_t nthread = 1;
+    std::string fitoutputfilename = "";
     //floats
     app.add_option("-x,--xml", xmlname, "Input PROfit XML config.");
     app.add_option("-m,--max", maxevents, "Max number of events to run over.");
@@ -40,7 +41,7 @@ int main(int argc, char* argv[])
     app.add_option("-o,--outfile", filename, "Output filename")->default_str("profit");
     app.add_option("-t, --nthread",   nthread, "Number of threads to parallelize over.")->default_val(1);
     app.add_option("--inject", injected_pt, "Physics parameters to inject as true signal.")->default_str("0 0");
-
+    app.add_option("-p,--printfitresult", fitoutputfilename, "Output .txt file name to store (append) best fit physics parameters and # of failed fits (not Profile)."); 
     CLI11_PARSE(app, argc, argv);
 
     log<LOG_INFO>(L"%1% || PROfit commandline input arguments. xml: %2%, outfile: %3%, nthread: %4% ") % __func__ % xmlname.c_str() % filename.c_str() % nthread ;
@@ -65,7 +66,7 @@ int main(int argc, char* argv[])
     std::unique_ptr<PROmodel> model = get_model_from_string(myConf.m_model_tag, myprop);
 
     Eigen::VectorXf pparams{{std::log10(injected_pt[0]), std::log10(injected_pt[1])}};
-    log<LOG_INFO>(L"%1% || PROfit Injected point: sinsq2t  %2% dmsq %3%") % __func__ % injected_pt[0] % injected_pt[1] ;
+    log<LOG_INFO>(L"%1% || PROfit Injected point: sinsq2t  %2% dmsq %3%") % __func__ % injected_pt[1] % injected_pt[0] ;
     PROspec data = injected_pt[0] != 0 && injected_pt[1] != 0 ? 
         FillRecoSpectra(myConf, myprop, systs, *model, pparams, true) :
         FillCVSpectrum(myConf, myprop, true);
@@ -90,9 +91,10 @@ int main(int argc, char* argv[])
 
     LBFGSpp::LBFGSBParam<float> param;  
     param.epsilon = 1e-6;
-    param.max_iterations = 100;
+    param.max_iterations = 50;
     param.max_linesearch = 250;
     param.delta = 1e-6;
+    param.past = 1.e-4;
 
     size_t nparams = 2 + systs.GetNSplines();
     Eigen::VectorXf lb = Eigen::VectorXf::Constant(nparams, -3.0);
@@ -104,8 +106,10 @@ int main(int argc, char* argv[])
         ub(i) = systs.spline_hi[i-2];
     }
     PROfitter fitter(ub, lb, param);
-
+    // silly test
+    log<LOG_INFO>(L"%1% || PROfit failed fits (before fitting): %2%") % __func__ % fitter.n_failures;
     float chi2 = fitter.Fit(chi); 
+    log<LOG_INFO>(L"%1% || PROfit failed fits (after fitting): %2%") % __func__ % fitter.n_failures;
     Eigen::VectorXf best_fit = fitter.best_fit;
     //Eigen::MatrixXd post_covar = fitter.ScaledCovariance(chi2, myConf.m_num_bins_total_collapsed);
     Eigen::MatrixXf post_covar = fitter.Covariance();
@@ -114,6 +118,16 @@ int main(int argc, char* argv[])
     std::string hname = "";
 
     Eigen::VectorXf subvector1 = best_fit.segment(0, 2);
+    std::string string_subvector1 = "";
+    for(auto &f : subvector1) string_subvector1+=" "+std::to_string(f); // log10(dmsq) log10(sinsq2th)
+    for(auto &f : subvector1) string_subvector1+=" "+std::to_string(std::pow(10,f)); // dmsq, sinsq2th
+
+    //log<LOG_DEBUG>(L"%1% || Best Point (only parameters of interest) is  : %2% ") % __func__ % string_subvector1.c_str();
+    std::ofstream file_fit_parameters;
+    file_fit_parameters.open(fitoutputfilename.c_str(),std::ios_base::app);
+    //file_fit_parameters << "Best Point (only parameters of interest) are " << string_subvector1 << std::endl;
+    file_fit_parameters << string_subvector1 << "\t" << fitter.n_failures << std::endl;
+    file_fit_parameters.close();
     std::vector<float> fitparams(subvector1.data(), subvector1.data() + subvector1.size());
 
     Eigen::VectorXf subvector2 = best_fit.segment(2, systs.GetNSplines());

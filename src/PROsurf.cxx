@@ -60,7 +60,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, int start
 
         int which_spline= i;
         bool isphys = which_spline < local_metric->GetModel().nparams;
-        if(isphys) nstep=4*nstep;
+        //if(isphys) nstep=4*nstep;
         profOut output;
 
         log<LOG_INFO>(L"%1% || THREADS %2% in this batch if ( %3%,%4% )") % __func__ %  i % start % end;
@@ -106,10 +106,10 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, int start
 
             LBFGSpp::LBFGSBParam<float> param;
             param.epsilon = 1e-6;
-            param.max_iterations = 100;
+            param.max_iterations = 50;
             param.max_linesearch = 50;
             param.delta = 1e-6;
-
+	    param.past = 1.e-4;
             local_metric->fixSpline(which_spline,which_value);
 
             PROfitter fitter(ub, lb, param);
@@ -164,10 +164,10 @@ std::vector<surfOut> PROsurf::PointHelper(std::vector<surfOut> multi_physics_par
 
         LBFGSpp::LBFGSBParam<float> param;
         param.epsilon = 1e-6;
-        param.max_iterations = 100;
+        param.max_iterations = 50;
         param.max_linesearch = 50;
         param.delta = 1e-6;
-
+	param.past = 1e-4;
         Eigen::VectorXf lb(nparams+2);
         lb << local_metric->GetModel().lb, Eigen::VectorXf::Map(local_metric->GetSysts().spline_lo.data(), local_metric->GetSysts().spline_lo.size());
         Eigen::VectorXf ub(nparams+2);
@@ -279,9 +279,10 @@ PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &
 
     LBFGSpp::LBFGSBParam<float> param;
     param.epsilon = 1e-6;
-    param.max_iterations = 100;
+    param.max_iterations = 50;
     param.max_linesearch = 50;
     param.delta = 1e-6;
+    param.past = 1.e-4;
 
     LBFGSpp::LBFGSBSolver<float> solver(param);
     int nparams = systs.GetNSplines() + model.nparams*with_osc;
@@ -307,8 +308,8 @@ PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &
 
     int loopSize = nparams;
     if(nThreads>loopSize){
-        nThreads = loopSize;
-        log<LOG_INFO>(L"%1% || nThreads is < loopSize (nparams) : %2% <  %3%. Setting equal ") % __func__ % nThreads % loopSize ;
+        log<LOG_INFO>(L"%1% || nThreads is > loopSize (nparams) : %2% > %3%. Setting equal ") % __func__ % nThreads % loopSize ;
+	nThreads = loopSize;
     }
 
     int chunkSize = loopSize / nThreads;

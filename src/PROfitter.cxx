@@ -39,6 +39,8 @@ std::vector<int> sorted_indices(const std::vector<float>& vec) {
 }
 
 float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
+    // resetting the number of fit failures before starting
+    n_failures = 0;
     std::random_device rd{};
     std::mt19937 rng{rd()};
     std::normal_distribution<float> d;
@@ -96,6 +98,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
             niter = solver.minimize(metric, x, fx, lb, ub);
         } catch(std::runtime_error &except) {
             log<LOG_WARNING>(L"%1% || Fit failed on niter,%2% : %3%") % __func__ % niter % except.what();
+	    n_failures++;
         }
         chi2s_localfits.push_back(fx);
         if(fx<chimin){
@@ -121,6 +124,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
             niter = solver.minimize(metric, x, fx, lb, ub);
         } catch(std::runtime_error &except) {
             log<LOG_WARNING>(L"%1% || Fit failed, %2%") % __func__ % except.what();
+	    n_failures++;
         }
         chi2s_localfits.push_back(fx);
         if(fx < chimin){
@@ -142,6 +146,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
         niter = solver.minimize(metric, x, fx, lb, ub);
     } catch(std::runtime_error &except) {
         log<LOG_WARNING>(L"%1% || Fit failed, %2%") % __func__ % except.what();
+	n_failures++;
     }
     chi2s_localfits.push_back(fx);
     if(fx < chimin){

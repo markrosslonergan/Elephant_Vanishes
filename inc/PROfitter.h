@@ -14,7 +14,7 @@ public:
     LBFGSpp::LBFGSBParam<float> param;
     LBFGSpp::LBFGSBSolver<float> solver;
     int n_multistart = 100, n_localfit = 5;
-
+    int n_failures = 0; // global number of minimizer fit attempts that fail 
     PROfitter(const Eigen::VectorXf ub, const Eigen::VectorXf lb, const LBFGSpp::LBFGSBParam<float> &param = {})
         : ub(ub), lb(lb), param(param), solver(param) {}
 
