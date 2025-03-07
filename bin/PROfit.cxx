@@ -72,7 +72,7 @@ int main(int argc, char* argv[])
     std::vector<int> grid_size;
     bool statonly = false, logx=true, logy=true;
     std::string xlabel, ylabel;
-
+    int rng_seed = -1;
     std::string reweights_file;
     std::vector<std::string> mockreweights;
     std::vector<TH2D*> weighthists;
@@ -92,6 +92,7 @@ int main(int argc, char* argv[])
     app.add_option("--fit-options", fit_options, "Parameters for LBFGSB.");
     app.add_option("-f, --rwfile", reweights_file, "File containing histograms for reweighting");
     app.add_option("-r, --mockrw",   mockreweights, "Vector of reweights to use for mock data");
+    app.add_option("-s, --seed",   rng_seed, "Random number seed, defauly is -1 which is hardware rng")->default_val(-1);
     app.add_flag("--scale-by-width", binwidth_scale, "Scale histgrams by 1/(bin width).");
     app.add_flag("--event-by-event", eventbyevent, "Do you want to weight event-by-event?");
     app.add_flag("--statonly", statonly, "Run a stats only surface instead of fitting systematics");
@@ -133,6 +134,10 @@ int main(int argc, char* argv[])
     log<LOG_INFO>(L" %1% ") % getIcon().c_str()  ;
 std:string final_output_tag =analysis_tag +"_"+output_tag;
     log<LOG_INFO>(L"%1% || PROfit commandline input arguments. xml: %2%, tag: %3%, output %4%, nthread: %5% ") % __func__ % xmlname.c_str() % analysis_tag.c_str() % output_tag.c_str() % nthread ;
+
+    
+    
+    std::shared_ptr<PROseed> proseed = std::make_shared<PROseed>(rng_seed); 
 
     //Initilize configuration from the XML;
     PROconfig config(xmlname);
@@ -230,6 +235,8 @@ std:string final_output_tag =analysis_tag +"_"+output_tag;
         data = FillWeightedSpectrumFromHist(config,prop,weighthists,*model, allparams,!eventbyevent);
     }
 
+
+
     Eigen::VectorXf data_vec = CollapseMatrix(config, data.Spec());
     Eigen::VectorXf err_vec_sq = data.Error().array().square();
     Eigen::VectorXf err_vec = CollapseMatrix(config, err_vec_sq).array().sqrt();
@@ -285,7 +292,7 @@ std:string final_output_tag =analysis_tag +"_"+output_tag;
         }
         PROfitter fitter(ub, lb, param);
 
-        float chi2 = fitter.Fit(*metric); 
+        float chi2 = fitter.Fit(*metric,proseed->get_thread_rng()); 
         Eigen::VectorXf best_fit = fitter.best_fit;
         Eigen::MatrixXf post_covar = fitter.Covariance();
 
@@ -304,7 +311,7 @@ std:string final_output_tag =analysis_tag +"_"+output_tag;
             post_hist.SetBinContent(i+1, post_fit(i));
         }
 
-        PROfile(config, prop, systs, *model, data, *metric , param, final_output_tag+"_PROfile", true, nthread, best_fit,pparams);
+        PROfile(config, prop, systs, *model, data, *metric , param, proseed, final_output_tag+"_PROfile", true, nthread, best_fit,pparams);
 
 
         //***********************************************************************
@@ -339,7 +346,7 @@ std:string final_output_tag =analysis_tag +"_"+output_tag;
         if(statonly)
             surface.FillSurfaceStat(config, final_output_tag+"_statonly_surface.txt");
         else
-            surface.FillSurface(final_output_tag+"_surface.txt",nthread);
+            surface.FillSurface(final_output_tag+"_surface.txt",proseed,nthread);
 
         std::vector<float> binedges_x, binedges_y;
         for(size_t i = 0; i < surface.nbinsx+1; i++)

@@ -73,7 +73,7 @@ void fc_worker(fc_args args) {
         PROfitter fitter(ub, lb, param);
 
         PROchi chi("3plus1",args.config,args.prop,&args.systs, *model, newSpec, strat);
-        float chi2_syst = fitter.Fit(chi);
+        float chi2_syst = fitter.Fit(chi,rng);
 
         // With oscillations
         LBFGSpp::LBFGSBParam<float> param_osc;  
@@ -94,7 +94,7 @@ void fc_worker(fc_args args) {
         PROfitter fitter_osc(ub_osc, lb_osc, param);
 
         PROchi chi_osc("3plus1",args.config,args.prop,&args.systs, *model, newSpec, strat);
-        float chi2_osc = fitter_osc.Fit(chi_osc); 
+        float chi2_osc = fitter_osc.Fit(chi_osc,rng); 
 
         Eigen::VectorXf t = Eigen::VectorXf::Map(throws.data(), throws.size());
 
