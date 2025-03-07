@@ -6,8 +6,8 @@
 #include "PROspec.h"
 #include "PROpeller.h"
 #include "PROsyst.h"
+#include "PROseed.h"
 #include "PROchi.h"
-
 #include "LBFGSB.h"
 
 #include <Eigen/Eigen>
@@ -41,9 +41,9 @@ class PROfile {
         public:
 	PROmetric &metric;
 
-  PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &systs, const PROmodel &model, const PROspec &data, PROmetric &metric, const LBFGSpp::LBFGSBParam<float> &param, std::string filename, bool with_osc = false, int nThreads = 1, const Eigen::VectorXf& init_seed = Eigen::VectorXf(), const Eigen::VectorXf& true_params = Eigen::VectorXf() ) ;
+  PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &systs, const PROmodel &model, const PROspec &data, PROmetric &metric, const LBFGSpp::LBFGSBParam<float> &param, std::shared_ptr<PROseed> seed, std::string filename, bool with_osc = false, int nThreads = 1, const Eigen::VectorXf& init_seed = Eigen::VectorXf(), const Eigen::VectorXf& true_params = Eigen::VectorXf() ) ;
 
-    	std::vector<profOut> PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, int start, int end, bool with_osc, const Eigen::VectorXf& init_seed = Eigen::VectorXf());
+    	std::vector<profOut> PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, std::shared_ptr<PROseed> seed, int start, int end, bool with_osc, const Eigen::VectorXf& init_seed = Eigen::VectorXf());
 };
 
 class PROsurf {
@@ -62,10 +62,10 @@ public:
 
     PROsurf(PROmetric &metric, size_t x_idx, size_t y_idx, size_t nbinsx, LogLin llx, float x_lo, float x_hi, size_t nbinsy, LogLin lly, float y_lo, float y_hi);
 
-    std::vector<surfOut> PointHelper(std::vector<surfOut> multi_physics_params, int start, int end);
+    std::vector<surfOut> PointHelper(std::vector<surfOut> multi_physics_params, std::shared_ptr<PROseed> seed, int start, int end);
 
     void FillSurfaceStat(const PROconfig &config, std::string filename);
-    void FillSurface(std::string filename, int nthreads = 1);
+    void FillSurface(std::string filename, std::shared_ptr<PROseed> seed,int nthreads = 1);
 
 };
 

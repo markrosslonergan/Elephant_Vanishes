@@ -2,7 +2,7 @@
 #define PROFITTER_H
 
 #include "PROmetric.h"
-
+#include "PROseed.h"
 #include <Eigen/Eigen>
 #include "LBFGSB.h"
 
@@ -18,7 +18,7 @@ public:
     PROfitter(const Eigen::VectorXf ub, const Eigen::VectorXf lb, const LBFGSpp::LBFGSBParam<float> &param = {})
         : ub(ub), lb(lb), param(param), solver(param) {}
 
-    float Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt = Eigen::VectorXf());
+    float Fit(PROmetric &metric, std::mt19937 &rng, const Eigen::VectorXf &seed_pt = Eigen::VectorXf());
 
     Eigen::VectorXf FinalGradient() const {return solver.final_grad();}
     float FinalGradientNorm() const {return solver.final_grad_norm();}

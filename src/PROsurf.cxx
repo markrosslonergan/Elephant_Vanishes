@@ -2,6 +2,7 @@
 #include "LBFGSpp/Param.h"
 #include "PROfitter.h"
 #include "PROlog.h"
+#include "PROseed.h"
 
 #include <Eigen/Eigen>
 
@@ -48,7 +49,7 @@ void PROsurf::FillSurfaceStat(const PROconfig &config, std::string filename) {
     delete local_metric;
 }
 
-std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, int start, int end, bool with_osc, const Eigen::VectorXf& init_seed) {
+std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, std::shared_ptr<PROseed> seed, int start, int end, bool with_osc, const Eigen::VectorXf& init_seed) {
 
     std::vector<profOut> outs;
     // Make a local copy for this thread
@@ -56,15 +57,19 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
     int nparams = local_metric->GetModel().nparams + systs->GetNSplines();
     int nstep = 20;
 
+    std::normal_distribution<float> dist(0.0, 1.0);
     for(int i=start; i<end;i++){
         local_metric->reset();
 
+
+        float random_num = dist(seed->get_thread_rng());
+               //         std::cout << "Generated random number: " << random_num << std::endl;
+                //
         int which_spline= i;
         bool isphys = which_spline < local_metric->GetModel().nparams;
         if(isphys) nstep=4*nstep;
         profOut output;
-
-        log<LOG_INFO>(L"%1% || THREADS %2% in this batch if ( %3%,%4% )") % __func__ %  i % start % end;
+        log<LOG_INFO>(L"%1% || THREADS %2% in this batch if ( %3%,%4% ) %5% ") % __func__ %  i % start % end % random_num;
         
 
         Eigen::VectorXf last_bf;
@@ -109,9 +114,9 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
 
             PROfitter fitter(ub, lb, param);
             if(last_bf.norm()>0){
-                fx = fitter.Fit(*local_metric,last_bf);
+                fx = fitter.Fit(*local_metric,seed->get_thread_rng(),last_bf);
             }else{
-                fx = fitter.Fit(*local_metric);
+                fx = fitter.Fit(*local_metric,seed->get_thread_rng());
             }
             output.knob_chis.push_back(fx);
             last_bf = fitter.best_fit;
@@ -133,7 +138,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
     return outs;
 }
 
-std::vector<surfOut> PROsurf::PointHelper(std::vector<surfOut> multi_physics_params, int start, int end){
+std::vector<surfOut> PROsurf::PointHelper(std::vector<surfOut> multi_physics_params, std::shared_ptr<PROseed> seed, int start, int end){
     std::vector<surfOut> outs;
 
     // Make a local copy for this thread
@@ -141,6 +146,7 @@ std::vector<surfOut> PROsurf::PointHelper(std::vector<surfOut> multi_physics_par
 
     for(int i=start; i<end;i++){
         local_metric->reset();
+
 
         surfOut output;
         std::vector<float> physics_params = multi_physics_params[i].grid_val;
@@ -174,7 +180,7 @@ std::vector<surfOut> PROsurf::PointHelper(std::vector<surfOut> multi_physics_par
         ub(y_idx) = multi_physics_params[i].grid_val[0];
 
         PROfitter fitter(ub, lb, param);
-        output.chi = fitter.Fit(*local_metric);
+        output.chi = fitter.Fit(*local_metric,seed->get_thread_rng());
         outs.push_back(output);
     }
     
@@ -184,7 +190,7 @@ std::vector<surfOut> PROsurf::PointHelper(std::vector<surfOut> multi_physics_par
 }
 
 
-void PROsurf::FillSurface(std::string filename, int nThreads) {
+void PROsurf::FillSurface(std::string filename, std::shared_ptr<PROseed> seed,int nThreads) {
     std::ofstream chi_file;
     if(!filename.empty()){
         chi_file.open(filename);
@@ -211,7 +217,7 @@ void PROsurf::FillSurface(std::string filename, int nThreads) {
         int start = t * chunkSize;
         int end = (t == nThreads - 1) ? loopSize : start + chunkSize;
         futures.emplace_back(std::async(std::launch::async, [&, start, end]() {
-            return this->PointHelper(grid, start, end);
+            return this->PointHelper(grid, seed, start, end);
         }));
 
     }
@@ -275,7 +281,7 @@ std::vector<float> findMinAndBounds(TGraph *g, float val, float lo, float hi) {
 }
 
 
-PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &systs, const PROmodel &model, const PROspec &data, PROmetric &metric, const LBFGSpp::LBFGSBParam<float> &param, std::string filename, bool with_osc, int nThreads, const Eigen::VectorXf & init_seed, const Eigen::VectorXf & true_params) : metric(metric) {
+PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &systs, const PROmodel &model, const PROspec &data, PROmetric &metric, const LBFGSpp::LBFGSBParam<float> &param, std::shared_ptr<PROseed> seed, std::string filename, bool with_osc, int nThreads, const Eigen::VectorXf & init_seed, const Eigen::VectorXf & true_params) : metric(metric) {
     LBFGSpp::LBFGSBSolver<float> solver(param);
     int nparams = systs.GetNSplines() + model.nparams*with_osc;
     std::vector<float> physics_params; 
@@ -314,7 +320,7 @@ PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &
         int start = t * chunkSize;
         int end = (t == nThreads - 1) ? loopSize : start + chunkSize;
         futures.emplace_back(std::async(std::launch::async, [&, start, end]() {
-            return this->PROfilePointHelper(&systs, param, start, end,with_osc,init_seed);
+            return this->PROfilePointHelper(&systs, param, seed, start, end,with_osc,init_seed);
         }));
 
     }

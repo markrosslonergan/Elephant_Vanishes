@@ -38,9 +38,7 @@ std::vector<int> sorted_indices(const std::vector<float>& vec) {
     return indices;
 }
 
-float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
-    std::random_device rd{};
-    std::mt19937 rng{rd()};
+float PROfitter::Fit(PROmetric &metric, std::mt19937 &rng, const Eigen::VectorXf &seed_pt ) {
     std::normal_distribution<float> d;
     std::uniform_real_distribution<float> d_uni(-2.0, 2.0);
 
