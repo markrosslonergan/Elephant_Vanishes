@@ -118,16 +118,7 @@ int main(int argc, char* argv[])
     std::string hname = "";
 
     Eigen::VectorXf subvector1 = best_fit.segment(0, 2);
-    std::string string_subvector1 = "";
-    for(auto &f : subvector1) string_subvector1+=" "+std::to_string(f); // log10(dmsq) log10(sinsq2th)
-    for(auto &f : subvector1) string_subvector1+=" "+std::to_string(std::pow(10,f)); // dmsq, sinsq2th
 
-    //log<LOG_DEBUG>(L"%1% || Best Point (only parameters of interest) is  : %2% ") % __func__ % string_subvector1.c_str();
-    std::ofstream file_fit_parameters;
-    file_fit_parameters.open(fitoutputfilename.c_str(),std::ios_base::app);
-    //file_fit_parameters << "Best Point (only parameters of interest) are " << string_subvector1 << std::endl;
-    file_fit_parameters << string_subvector1 << "\t" << fitter.n_failures << std::endl;
-    file_fit_parameters.close();
     std::vector<float> fitparams(subvector1.data(), subvector1.data() + subvector1.size());
 
     Eigen::VectorXf subvector2 = best_fit.segment(2, systs.GetNSplines());
@@ -193,9 +184,33 @@ int main(int argc, char* argv[])
         c.Print((filename+"_pulls.pdf").c_str(), "pdf");
 
     }
+    std::vector<float> bestfit_params_errors; // asymmetric errors 
+    PROfile myPROf(myConf, myprop, systs, *model, data, chi,filename, true, nthread, best_fit);
+    bestfit_params_errors = myPROf.asym_error_phys;
+    // save info to output .txt file in the current format:
+    // dmsq_inj sinsq_inj dmsq_bestfit sinsq_bestfit err_low_dmsq err_up_dmsq err_low_sinsq err_up_sinsq nfits failed 
 
-    PROfile(myConf, myprop, systs, *model, data, chi,filename, true, nthread, best_fit);
+    std::string string_subvector1 = "";
+    string_subvector1 = std::to_string(injected_pt[0]) + " " + std::to_string(injected_pt[1]); 
 
+    //for(auto &f : subvector1) string_subvector1+=" "+std::to_string(f); // log10(dmsq) log10(sinsq2th)                                                                                                   
+    for(auto &f : subvector1) string_subvector1+=" "+std::to_string(std::pow(10,f)); // dmsq, sinsq2th
+    float dmsq_min = std::pow(10,bestfit_params_errors[0]) * std::pow(10,subvector1[0]);
+    float dmsq_max = std::pow(10,bestfit_params_errors[1]) * std::pow(10,subvector1[0]);
+    float sinsq_min = std::pow(10,bestfit_params_errors[2]) * std::pow(10,subvector1[1]);
+    float sinsq_max = std::pow(10,bestfit_params_errors[3]) * std::pow(10,subvector1[1]);
+    string_subvector1+=" "+std::to_string( abs(dmsq_min-std::pow(10,subvector1[0])));
+    string_subvector1+=" "+std::to_string( abs(dmsq_max-std::pow(10,subvector1[0])));
+    string_subvector1+=" "+std::to_string( abs(sinsq_min-std::pow(10,subvector1[1])));
+    string_subvector1+=" "+std::to_string( abs(sinsq_max-std::pow(10,subvector1[1])));
+
+    //log<LOG_DEBUG>(L"%1% || Best Point (only parameters of interest) is  : %2% ") % __func__ % string_subvector1.c_str();                                                                                
+    std::ofstream file_fit_parameters;
+    file_fit_parameters.open(fitoutputfilename.c_str(),std::ios_base::app);
+    //file_fit_parameters << "Best Point (only parameters of interest) are " << string_subvector1 << std::endl;                                                                                            
+    file_fit_parameters << string_subvector1 << "\t" << fitter.n_failures << std::endl;
+    file_fit_parameters.close();
+    
     return 0;
 }
 

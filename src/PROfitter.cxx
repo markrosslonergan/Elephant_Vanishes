@@ -142,7 +142,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     // and do CV
     log<LOG_INFO>(L"%1% || Starting CV fit x.size %2% fx %3% lb.size %4% ub.size %5%") % __func__ % x.size() % fx  % lb.size()  %ub.size() ;
     try {
-        x = Eigen::VectorXf::Constant(ub.size(), 0.012);
+        x = Eigen::VectorXf::Constant(ub.size(), 0.);
         niter = solver.minimize(metric, x, fx, lb, ub);
     } catch(std::runtime_error &except) {
         log<LOG_WARNING>(L"%1% || Fit failed, %2%") % __func__ % except.what();
