@@ -1,6 +1,7 @@
 #include "PROfitter.h"
 #include "PROlog.h"
 #include "PROmetric.h"
+#include "PROswarm.h"
 
 #include <Eigen/Eigen>
 
@@ -58,6 +59,40 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
             }
         }
     }
+
+    PROswarm PSO(metric, rng, latin_samples, lb, ub , 200 );
+    PSO.runSwarm(metric, rng);
+
+    //exit(EXIT_FAILURE);
+    
+    // and do Swarmed Point
+    Eigen::VectorXf x;  PSO.getGlobalBestPosition();
+
+    float chimin = 9999999;
+    std::vector<float> chi2s_localfits;
+    int niter=0;
+    float fx;
+
+    log<LOG_INFO>(L"%1% || Starting Swarm fit %2% %3% %4% ") % __func__ % x.size() % lb.size() % ub.size();
+    try {
+        x = PSO.getGlobalBestPosition();   
+        niter = solver.minimize(metric, x, fx, lb, ub);
+        chi2s_localfits.push_back(fx);
+        if(fx < chimin){
+            best_fit = x;
+            chimin = fx;
+        }
+
+        log<LOG_INFO>(L"%1% ||  Swarm Run has a chi %2% after %3% iterations") % __func__ %  fx % niter;
+        std::string spec_string = "";
+        for(auto &f : x) spec_string+=" "+std::to_string(f); 
+        log<LOG_DEBUG>(L"%1% || Best Point post Swarm is  : %2% ") % __func__ % spec_string.c_str();
+    } catch(std::runtime_error &except) {
+        log<LOG_WARNING>(L"%1% || Fit failed, %2%") % __func__ % except.what();
+    }
+
+
+    /*
     std::vector<float> chi2s_multistart;
     chi2s_multistart.reserve(n_multistart);
 
@@ -107,11 +142,10 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
         for(auto &f : x) spec_string+=" "+std::to_string(f); 
         log<LOG_DEBUG>(L"%1% || Best Point is  : %2% ") % __func__ % spec_string.c_str();
     }
+    */
 
 
     // and do Seeded Point
-    Eigen::VectorXf x;
-
     if(seed_pt.norm()>0){
         log<LOG_INFO>(L"%1% || Starting Seed fit ") % __func__  ;
         try {
@@ -134,6 +168,8 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
 
     // and do CV
+     /*
+     
     log<LOG_INFO>(L"%1% || Starting CV fit x.size %2% fx %3% lb.size %4% ub.size %5%") % __func__ % x.size() % fx  % lb.size()  %ub.size() ;
     try {
         x = Eigen::VectorXf::Constant(ub.size(), 0.012);
@@ -151,6 +187,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     } catch(std::runtime_error &except) {
         log<LOG_WARNING>(L"%1% || Fit failed, %2%") % __func__ % except.what();
     }
+    */
 
     log<LOG_INFO>(L"%1% || FINAL has a chi %2%") % __func__ %  chimin;
     std::string spec_string = "";

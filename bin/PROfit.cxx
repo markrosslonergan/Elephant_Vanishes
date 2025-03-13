@@ -333,6 +333,7 @@ int main(int argc, char* argv[])
     param.max_linesearch = 250;
     param.delta = 1e-6;
     for(const auto &[param_name, value]: fit_options) {
+        log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
         if(param_name == "epsilon") {
             param.epsilon = value;
         } else if(param_name == "delta") {
