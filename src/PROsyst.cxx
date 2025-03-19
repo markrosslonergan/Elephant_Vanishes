@@ -553,5 +553,32 @@ namespace PROfit {
     PROsyst::SystType PROsyst::GetSystType(const std::string &syst) const {
         return syst_map.at(syst).second;
     }
+
+    Eigen::MatrixXf PROsyst::DecomposeFractionalCovariance(const PROconfig &config, const Eigen::VectorXf &cv_vec) const {
+        Eigen::MatrixXf diag = cv_vec.asDiagonal();
+        Eigen::MatrixXf full_cov = diag * fractional_covariance * diag;
+        Eigen::MatrixXf coll = CollapseMatrix(config, full_cov);
+        Eigen::LDLT<Eigen::MatrixXf> ldlt(coll);
+        Eigen::MatrixXf L = ldlt.matrixL(); 
+        Eigen::VectorXf D_sqrt = ldlt.vectorD().array().sqrt();  
+        Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> P(ldlt.transpositionsP());
+
+        if (ldlt.info() != Eigen::Success) {
+            log<LOG_ERROR>(L"%1% | Eigen LLT has failed!") % __func__ ;
+            if (!coll.isApprox(coll.transpose())) {
+                log<LOG_ERROR>(L"%1% | Matrix is not symmetric!") % __func__ ;
+            }
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> eigensolver(coll);
+            if (eigensolver.eigenvalues().minCoeff() <= 0) {
+                log<LOG_ERROR>(L"%1% | Matrix is not positive semi definite, minCoeff is %2% ") % __func__ % eigensolver.eigenvalues().minCoeff();
+            }
+            Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, " ", "\n", "", "", "", "");
+            std::ostringstream oss;
+            oss << coll.format(fmt);
+            log<LOG_ERROR>(L"%1% | Matrix is %2% ") % __func__ % oss.str().c_str();
+            exit(EXIT_FAILURE);
+        }
+        return P * L * D_sqrt.asDiagonal();
+    }
 };
 
