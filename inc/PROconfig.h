@@ -33,12 +33,12 @@
 #include "TColor.h"
 
 
-/*eweight_type here to switch between uboone style "float" and SBNcode style "float"  */
-#define TYPE_FLOAT
+/*eweight_type here to switch between uboone style "float" and SBNcode style "double"  */
+//#define TYPE_FLOAT
 #ifdef TYPE_FLOAT  
 typedef float eweight_type;
 #else
-typedef float eweight_type;
+typedef double eweight_type;
 #endif
 
 namespace PROfit{
