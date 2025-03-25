@@ -74,6 +74,7 @@ namespace PROfit {
     }
 
     void SystStruct::FillUniverse(int universe, int global_bin, float event_weight){
+        log<LOG_INFO>(L"%1% || p_multi_spec size %2% and universe %3%") % __func__ % p_multi_spec.size() % universe;
         p_multi_spec.at(universe)->QuickFill(global_bin, event_weight);
         return;
     }
@@ -376,7 +377,6 @@ namespace PROfit {
         int good_event = 0;
         bool useXrootD = !noxrootd;
 
-
         for(int fid=0; fid < num_files; ++fid) {
             const auto& fn = inconfig.m_mcgen_file_name.at(fid);
 
@@ -384,11 +384,11 @@ namespace PROfit {
             std::vector<std::string> filesForChain;
 
             if (fn.find(".root") != std::string::npos) {
-                log<LOG_INFO>(L"%1% || Starting a (single) TCHain, loading file %2%") % __func__  % fn.c_str();
+                log<LOG_INFO>(L"%1% || Starting a (single) TCHain, loading root file %2%") % __func__  % fn.c_str();
                 filesForChain.push_back(useXrootD ? convertToXRootD(fn) : fn);
             }else{
 
-                log<LOG_INFO>(L"%1% || Starting a TCHain, loading from filelist %2%") % __func__  % fn.c_str();
+                log<LOG_INFO>(L"%1% || Starting a TCHain number %3%, loading from filelist %2%") % __func__  % fn.c_str() % fid;
                 std::ifstream infile(fn.c_str()); 
                 if (!infile) {
                     log<LOG_ERROR>(L"%1% || Failed to open input filelist %2%") % __func__  % fn.c_str();
@@ -398,7 +398,7 @@ namespace PROfit {
                 std::string line;
                 while (std::getline(infile, line)) {
                     if(useXrootD) line = convertToXRootD(line);
-                    log<LOG_INFO>(L"%1% || Loading file %2% into TChain") %__func__ % line.c_str();
+                    log<LOG_INFO>(L"%1% || Loading file %2% into TChain number %3% ") %__func__ % line.c_str() % fid;
                     filesForChain.push_back(line);
                 }
 
@@ -441,19 +441,23 @@ namespace PROfit {
                 } // End friend initialization
             } // End chain filling
 
-            for (size_t fid = 0; fid < num_files; fid++) {
-                if (inconfig.m_mcgen_numfriends[fid] > 0) {
-                    for (size_t k = 0; k < friendChains[fid].size(); k++) {
-                        log<LOG_DEBUG>(L"%1% || Adding friend chain %2% to main chain %3%") % __func__ % k % fid;
-                        chains[fid]->AddFriend(friendChains[fid][k]);
-                    }
+        }//end loading the main files and PREparing the chains
+
+        //add chains and summarize
+        log<LOG_DEBUG>(L"%1% || Starting summary of friends and chains in total over all files and friends ") % __func__ ;
+        for (size_t fid = 0; fid < num_files; fid++) {
+            if (inconfig.m_mcgen_numfriends[fid] > 0) {
+                for (size_t k = 0; k < friendChains[fid].size(); k++) {
+                    log<LOG_DEBUG>(L"%1% || Adding friend chain %2% (%5%) to main chain %3% (%4%)") % __func__ % k % fid % chains[fid]->GetName() % friendChains[fid][k]->GetName();
+                    chains[fid]->AddFriend(friendChains[fid][k]);
                 }
             }
+        }
 
+        //new loop over the filled, and friended   
+        for(int fid=0; fid < num_files; ++fid) {
 
             nentries[fid] = chains[fid]->GetEntries();
-
-
 
             // grab branches 
             int num_branch = inconfig.m_branch_variables[fid].size();
@@ -508,38 +512,67 @@ namespace PROfit {
                 }
 
 
-                //grab eventweight branch
+                //grab eventweight branch. Little hacky. Make sure to only set each one one.
+                std::unordered_map<std::string,bool> map_syst_added;
+
                 if(!gotWeights){
                     for(const TObject* branch: *chains[fid]->GetListOfBranches()) {
-                        log<LOG_DEBUG>(L"%1% || Checking if branch %2% is in allowlist") % __func__ %  branch->GetName();
+                        log<LOG_DEBUG>(L"%1% || GotWeights? %3% .. Checking if branch %2% is in allowlist") % __func__ %  branch->GetName() % gotWeights;
 
                         if (std::find(inconfig.m_mcgen_variation_allowlist.begin(), inconfig.m_mcgen_variation_allowlist.end(), branch->GetName()) != inconfig.m_mcgen_variation_allowlist.end()) {
-                            log<LOG_INFO>(L"%1% || Setting up eventweight map for this branch: %2% for fid %3$") % __func__ %  branch->GetName() % fid;
-                            chains[fid]->SetBranchAddress(branch->GetName(), &(f_event_weights[fid][0][branch->GetName()]));
+                            if (map_syst_added.find(branch->GetName()) == map_syst_added.end()) {
+                                log<LOG_INFO>(L"%1% || Setting up eventweight map for this branch: %2% for fid %3$") % __func__ %  branch->GetName() % fid;
+                                chains[fid]->SetBranchAddress(branch->GetName(), &(f_event_weights[fid][0][branch->GetName()]));
+                                map_syst_added[branch->GetName()]=true;
+                            }else{
+                                log<LOG_DEBUG>(L"%1% || OK, skipping above setup as its already been added for the file. weird branch/file mismatch.") % __func__ ;
+                            }
+
                         } else if(strlen(branch->GetName()) > 6 && strcmp(branch->GetName() + strlen(branch->GetName()) - 6, "_sigma") == 0) {
-                            log<LOG_INFO>(L"%1% || Setting up knob val list using branch %2% for fid %3%") % __func__ % branch->GetName() % fid;
-                            chains[fid]->SetBranchAddress(branch->GetName(), &(f_knob_vals[fid][0][branch->GetName()]));
+                            if (map_syst_added.find(branch->GetName()) == map_syst_added.end()) {
+                                log<LOG_INFO>(L"%1% || Setting up knob val list using branch %2% for fid %3%") % __func__ % branch->GetName() % fid;
+                                chains[fid]->SetBranchAddress(branch->GetName(), &(f_knob_vals[fid][0][branch->GetName()]));
+                                map_syst_added[branch->GetName()]=true;
+                            }else{
+                                log<LOG_DEBUG>(L"%1% || OK, skipping above setup as its already been added for the file. weird branch/file mismatch.") % __func__ ;
+                            }
                         }
                     }
                     if(inconfig.m_mcgen_numfriends[fid]>0){
                         log<LOG_DEBUG>(L"%1% || Some Friend Processing") % __func__ ;
                         for(const TObject* friend_: *chains[fid]->GetListOfFriends()) {
                             for(const TObject* branch: *((TFriendElement*)friend_)->GetTree()->GetListOfBranches()) {
-                                log<LOG_DEBUG>(L"%1% || Checking if branch %2% is in allowlist") % __func__ %  branch->GetName();
+
+                                log<LOG_DEBUG>(L"%1% || (friend) Checking if branch %2% in friend %3% is in allowlist") % __func__ %  branch->GetName() % friend_->GetName();
 
                                 if (std::find(inconfig.m_mcgen_variation_allowlist.begin(), inconfig.m_mcgen_variation_allowlist.end(), branch->GetName()) != inconfig.m_mcgen_variation_allowlist.end()) {
+                                    //its in here
                                     if(branch_variable->GetIncludeSystematics()){
-                                        log<LOG_INFO>(L"%1% || Setting up eventweight map for this branch: %2%") % __func__ %  branch->GetName();
+                                        if (map_syst_added.find(branch->GetName()) == map_syst_added.end()) {
+                                            log<LOG_INFO>(L"%1% || Setting up eventweight map for this branch: %2%") % __func__ %  branch->GetName();
 
-                                        chains[fid]->SetBranchAddress(branch->GetName(), &(f_event_weights[fid][0][branch->GetName()]));
+                                            chains[fid]->SetBranchAddress(branch->GetName(), &(f_event_weights[fid][0][branch->GetName()]));
+                                            
+                                            map_syst_added[branch->GetName()]=true;
+                                        }else{
+                                            log<LOG_DEBUG>(L"%1% || OK, skipping above setup as its already been added for the file. weird branch/file mismatch.") % __func__ ;
+                                        }
+
 
 
                                     }else{
                                         log<LOG_INFO>(L"%1% || EXPLICITLY NOT Setting up eventweight map for this branch: %2%") % __func__ %  branch->GetName();
                                     }
                                 } else if(strlen(branch->GetName()) > 6 && strcmp(branch->GetName() + strlen(branch->GetName()) - 6, "_sigma") == 0) {
-                                    log<LOG_INFO>(L"%1% || Setting up knob val list using branch %2%") % __func__ % branch->GetName();
-                                    chains[fid]->SetBranchAddress(branch->GetName(), &(f_knob_vals[fid][0][branch->GetName()]));
+
+                                    if (map_syst_added.find(branch->GetName()) == map_syst_added.end()) {
+                                        log<LOG_INFO>(L"%1% || Setting up knob val list using branch %2%") % __func__ % branch->GetName();
+                                        chains[fid]->SetBranchAddress(branch->GetName(), &(f_knob_vals[fid][0][branch->GetName()]));
+                                        map_syst_added[branch->GetName()]=true;
+                                    }else{
+                                        log<LOG_DEBUG>(L"%1% || OK, skipping above setup as its already been added for the file. weird branch/file mismatch.") % __func__ ;
+                                    }
+
                                 }
                             }
                         }
@@ -742,11 +775,12 @@ namespace PROfit {
 
 
                     for(int ib = 0; ib != num_branch; ++ib) {
+                        log<LOG_INFO>(L"%1% || Bcheck  %2%  %3%  %4% %5% ") % __func__ % fid % ib % currentTreeNumber % i;
 
-                    if(inconfig.m_mcgen_additional_weight_bool[fid][ib]){
-                        branches[ib]->branch_monte_carlo_weight_formula->GetNdata();
-                        branches[ib]->branch_monte_carlo_weight_formula->UpdateFormulaLeaves();
-                    }
+                        if(inconfig.m_mcgen_additional_weight_bool[fid][ib]){
+                            branches[ib]->branch_monte_carlo_weight_formula->GetNdata();
+                            branches[ib]->branch_monte_carlo_weight_formula->UpdateFormulaLeaves();
+                        }
                         branches[ib]->branch_true_pdg_formula->GetNdata();
                         branches[ib]->branch_true_pdg_formula->UpdateFormulaLeaves();
                         branches[ib]->branch_formula->GetNdata();
@@ -763,12 +797,14 @@ namespace PROfit {
                         }
                     }
 
+                    log<LOG_INFO>(L"%1% || B1 ") % __func__ ;
                     for(size_t is = 0; is != total_num_systematics; ++is){
                         if(syst_vector[is].HasWeightFormula()){
                             sys_weight_formula[is]->UpdateFormulaLeaves();
                             sys_weight_formula[is]->GetNdata();	
                         }
                     }//end sys
+                    log<LOG_INFO>(L"%1% || B2 ") % __func__ ;
                     TObjArray* tbranches = chains[fid]->GetListOfBranches();
                     for (int i = 0; i < tbranches->GetEntries(); i++) {
                         TBranch* branch = (TBranch*)tbranches->At(i);
@@ -777,7 +813,7 @@ namespace PROfit {
                         log<LOG_DEBUG>(L"%1% || BRANCH %2% is %3%") % __func__ % branchName % (isActive ? "active" : "inactive");
                     }
 
-
+                    log<LOG_INFO>(L"%1% || B3 ") % __func__ ;
                 }
 
                 //grab additional weight for systematics
@@ -787,9 +823,11 @@ namespace PROfit {
                     }
                 }
 
+                log<LOG_INFO>(L"%1% || B4 ") % __func__ ;
 
                 //branch loop
                 for(int ib = 0; ib != num_branch; ++ib) {
+                    log<LOG_INFO>(L"%1% || B5 going inside %2% ") % __func__ % ib;
                     process_cafana_event(inconfig, branches[ib], f_event_weights[fid][0], inconfig.m_mcgen_pot[fid], subchannel_index[ib], syst_vector, sys_weight_value, inprop);
                 } 
 
@@ -1435,22 +1473,27 @@ namespace PROfit {
     void process_cafana_event(const PROconfig &inconfig, const std::shared_ptr<BranchVariable>& branch, const std::map<std::string, std::vector<eweight_type>*>& eventweight_map, float mcpot, int subchannel_index, std::vector<SystStruct>& syst_vector, const std::vector<float>& syst_additional_weight, PROpeller& inprop){
 
 
+
+        log<LOG_INFO>(L"%1% || A1  ") % __func__ ;
         int total_num_sys = syst_vector.size(); 
         float reco_value = branch->GetValue<float>();
         float true_param = branch->GetTrueValue<float>();
         float baseline = branch->GetTrueL<float>();
         float true_value = baseline / true_param;
 
+        log<LOG_INFO>(L"%1% || A2  %2% ") % __func__ % reco_value;
         float pmom = branch->GetTrueLeadProtonMom<double>();
         float pcosth = branch->GetTrueLeadProtonCosth<double>();
         int run_syst = branch->GetIncludeSystematics();
         float mc_weight = branch->GetMonteCarloWeight();
         mc_weight *= inconfig.m_plot_pot / mcpot;
 
+        log<LOG_INFO>(L"%1% || A3  %2%") % __func__ % mc_weight;
         int global_bin = FindGlobalBin(inconfig, reco_value, subchannel_index);
         int global_true_bin = run_syst ? FindGlobalTrueBin(inconfig, true_value, subchannel_index) : 0 ;//seems werid, but restricts ALL cosmics to one bin. 
         int model_rule = branch->GetModelRule();
 
+        log<LOG_INFO>(L"%1% || A4  ") % __func__ ;
         if(global_bin < 0 )  //out of range
             return;
         if(global_true_bin < 0)
@@ -1458,6 +1501,7 @@ namespace PROfit {
         if(mc_weight == 0)
             return;
 
+        log<LOG_INFO>(L"%1% || A5  ") % __func__ ;
         inprop.added_weights.push_back(mc_weight);
         inprop.bin_indices.push_back(global_bin);
         inprop.trueLE.push_back((float)(baseline/true_param));
@@ -1468,35 +1512,45 @@ namespace PROfit {
         inprop.pcosth.push_back((float)pcosth);
         inprop.mcStatErr(global_bin) += 1;
 
+        log<LOG_INFO>(L"%1% || A6  ") % __func__ ;
         if(!run_syst) return;
 
         for(int i = 0; i != total_num_sys; ++i){
 
 
+            log<LOG_INFO>(L"%1% || C1 %2% ") % __func__ % i;
             SystStruct& syst_obj = syst_vector[i];
             float additional_weight = syst_additional_weight.at(i);
             auto map_iter = eventweight_map.find(syst_obj.GetSysName());
+            log<LOG_INFO>(L"%1% || C2 %2% ") % __func__ % i;
 
 
             if(syst_obj.mode == "spline") {
+                log<LOG_INFO>(L"%1% || Cspline1 %2% ") % __func__ % i;
                 syst_obj.FillCV(global_true_bin, mc_weight);
+                log<LOG_INFO>(L"%1% || Cspline2 %2% ") % __func__ % global_true_bin;
 
                 for(int is = 0; is < syst_obj.GetNUniverse(); ++is){
+                    log<LOG_INFO>(L"%1% || Cspline3 %2% ") % __func__ % is;
                     size_t u = 0;
                     for(; u < syst_obj.knobval.size(); ++u)
                         if(syst_obj.knobval[u] == syst_obj.knob_index[is]) break;
+                    log<LOG_INFO>(L"%1% || Cspline4 u %4%, is %2% / %3% ") % __func__ % is % map_iter->second->size() % u;
                     syst_obj.FillUniverse(u, global_true_bin, mc_weight * additional_weight * static_cast<float>(map_iter->second->at(is)));
-                    //log<LOG_INFO>(L"%1% || BLARG_S  %2% %3% %4%") % __func__ % additional_weight % mc_weight % static_cast<float>(map_iter->second->at(is));
+                    log<LOG_INFO>(L"%1% || BLARG_S  %2% %3% %4%") % __func__ % additional_weight % mc_weight % static_cast<float>(map_iter->second->at(is));
 
                 }
                 continue;
             }else if(syst_obj.mode == "covariance"){
 
+                log<LOG_INFO>(L"%1% || Ccovar1 %2% ") % __func__ % i;
                 syst_obj.FillCV(global_bin, mc_weight);
                 for(int iuni = 0; iuni < syst_obj.GetNUniverse(); ++iuni){
+                    log<LOG_INFO>(L"%1% || Ccovar2 %2% ") % __func__ % i;
                     float sys_wei = run_syst ? additional_weight * static_cast<float>(map_iter->second->at(iuni) ) :  1.0;
+                    log<LOG_INFO>(L"%1% || Ccovar3 %2% ") % __func__ % i;
                     syst_obj.FillUniverse(iuni, global_bin, mc_weight *sys_wei );
-                    //log<LOG_INFO>(L"%1% || BLARG_C  %2% %3% %4%") % __func__ % additional_weight % mc_weight % static_cast<float>(map_iter->second->at(iuni));
+                    log<LOG_INFO>(L"%1% || BLARG_C  %2% %3% %4%") % __func__ % additional_weight % mc_weight % static_cast<float>(map_iter->second->at(iuni));
                 }
             }
 
