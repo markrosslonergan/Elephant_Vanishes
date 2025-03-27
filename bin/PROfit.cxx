@@ -805,33 +805,39 @@ int main(int argc, char* argv[])
         c.Print((final_output_tag+"_PROplot_ErrorBand.pdf" + "[").c_str(), "pdf");
         global_subchannel_index = 0;
         global_channel_index = 0;
+        size_t data_global_channel_index = 0;
 
         std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs, binwidth_scale );
         for(size_t im = 0; im < config.m_num_modes; im++){
             for(size_t id =0; id < config.m_num_detectors; id++){
                 for(size_t ic = 0; ic < config.m_num_channels; ic++){
+                    log<LOG_DEBUG>(L"CHK %1% %2%") % global_channel_index% config.m_channel_bin_edges.size();
                     std::unique_ptr<THStack> s = std::make_unique<THStack>((std::to_string(global_channel_index)).c_str(),(std::to_string(global_channel_index)).c_str());
                     std::unique_ptr<TLegend> leg = std::make_unique<TLegend>(0.59,0.89,0.59,0.89);
                     leg->SetFillStyle(0);
                     leg->SetLineWidth(0);
+                    log<LOG_DEBUG>(L"CHK2 %1% %2%") % global_channel_index% config.m_channel_bin_edges.size();
                     for(size_t sc = 0; sc < config.m_num_subchannels[ic]; sc++){
                         const std::string& subchannel_name  = config.m_fullnames[global_subchannel_index];
                         s->Add(cv_hists[subchannel_name].get());
                         leg->AddEntry(cv_hists[subchannel_name].get(), config.m_subchannel_plotnames[ic][sc].c_str() ,"f");
                         ++global_subchannel_index;
                     }
+                    log<LOG_DEBUG>(L"CHK3 %1% %2%") % global_channel_index% config.m_channel_bin_edges.size();
                     err_band->SetFillColor(kBlack);
                     err_band->SetFillStyle(3005);
+                    log<LOG_DEBUG>(L"CHK4 %1% %2%") % global_channel_index% config.m_channel_bin_edges.size();
                     if(binwidth_scale)
                         err_band->GetYaxis()->SetTitle("Events/GeV");
                     else
                         err_band->GetYaxis()->SetTitle("Events");
 
+                    log<LOG_DEBUG>(L"CHK5 %1% %2%") % global_channel_index% config.m_channel_bin_edges.size();
 
                     err_band->Draw("A2P");
                     err_band->SetMinimum(0);
                     err_band->GetXaxis()->SetRangeUser(config.m_channel_bin_edges[global_channel_index].front(),config.m_channel_bin_edges[global_channel_index].back());
-                    log<LOG_DEBUG>(L"%1% || ErrorBarPlot bin range %2% %3% for det %4% and chan %5% ") % __func__ % config.m_channel_bin_edges[global_channel_index].front() % config.m_channel_bin_edges[global_channel_index].back() % id % ic ;
+                    log<LOG_DEBUG>(L"%1% || ErrorBarPlot bin range %2% %3% for det %4% and chan %5% (global_channel_index) %6%") % __func__ % config.m_channel_bin_edges[global_channel_index].front() % config.m_channel_bin_edges[global_channel_index].back() % id % ic % global_channel_index;
                     TH1D hdat = data.toTH1D(config, global_channel_index);
                     for(int k=0; k<=hdat.GetNbinsX(); k++){
                         hdat.SetBinError(k,sqrt(hdat.GetBinContent(k)));
@@ -844,6 +850,7 @@ int main(int argc, char* argv[])
                     if(binwidth_scale) hdat.Scale(1, "width");
                     hdat.Draw("same E1P");
 
+                    log<LOG_DEBUG>(L"CHK6 %1% %2%") % global_channel_index% config.m_channel_bin_edges.size();
                     s->Draw("hist SAME");
                     leg->Draw("SAME");
                     err_band->SetTitle((config.m_mode_names[im]  +" "+ config.m_detector_names[id]+" "+ config.m_channel_names[ic]).c_str());
@@ -864,7 +871,7 @@ int main(int argc, char* argv[])
 
 
                     c.Print((final_output_tag+"_PROplot_ErrorBand.pdf").c_str(), "pdf");
-                    global_channel_index++;
+                    data_global_channel_index++;
                 }
             }
         }
