@@ -60,7 +60,7 @@ public:
     /* Function: create PROspec of given size */
     PROdata(size_t num_bins);
 
-    TH1D toTH1D(const PROconfig& inconfig, int channel_index) const;
+    TH1D toTH1D(const PROconfig& inconfig, int channel_index, int other_index = -1) const;
 
     void toROOT(const PROconfig& inconfig, const std::string& output_name);
 
@@ -127,6 +127,28 @@ public:
         std::ifstream ifs(filename,std::ios::binary);
         boost::archive::binary_iarchive ia(ifs);
         ia >> *this;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        log<LOG_INFO>(L"%1% || Serialization load of PRospec from file  %2% took %3% seconds") % __func__ % filename.c_str() %elapsed.count();
+    }
+
+    static void saveVector(const PROconfig &config, std::vector<PROdata> &data, std::string &filename) {
+        for(auto &d: data) 
+            d.hash = config.hash;
+        auto start = std::chrono::high_resolution_clock::now();
+        std::ofstream ofs(filename, std::ios::binary);
+        boost::archive::binary_oarchive oa(ofs);
+        oa << data;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        log<LOG_INFO>(L"%1% || Serialization save of PROspec data into file  %2% took %3% seconds") % __func__ % filename.c_str() % elapsed.count();
+    }
+
+    static void loadVector(std::vector<PROdata> &data, std::string &filename) {
+        auto start = std::chrono::high_resolution_clock::now();
+        std::ifstream ifs(filename,std::ios::binary);
+        boost::archive::binary_iarchive ia(ifs);
+        ia >> data;
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
         log<LOG_INFO>(L"%1% || Serialization load of PRospec from file  %2% took %3% seconds") % __func__ % filename.c_str() %elapsed.count();

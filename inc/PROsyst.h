@@ -28,7 +28,7 @@ namespace PROfit {
             PROsyst(){}
 
             /*Function: Primary constructor from a vector of SystStructs  */
-            PROsyst(const PROpeller &prop, const PROconfig &config, const std::vector<SystStruct>& systs, bool shapeonly=false);
+            PROsyst(const PROpeller &prop, const PROconfig &config, const std::vector<SystStruct>& systs, bool shapeonly=false, int other_index = -1);
 
             PROsyst subset(const std::vector<std::string> &systs);
             PROsyst excluding(const std::vector<std::string> &systs);
@@ -127,6 +127,7 @@ namespace PROfit {
             [[maybe_unused]] size_t n_splines;
             std::vector<Eigen::MatrixXf> covmat;
             std::vector<Eigen::MatrixXf> corrmat;
+            int other_index;
             static bool shape_only;
     };
 
