@@ -96,7 +96,19 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
 
         Eigen::VectorXf last_bf;
         if(init_seed.norm()>0) last_bf= init_seed;
-        for(int i=0; i<=nstep;i++){
+        bool reset = false;
+        for (int j = 0; j <= nstep; ++j) {
+             int i;
+             if (j <= nstep - nstep / 2) {
+                 i = nstep / 2 + j;  // Forward direction
+            } else {
+                if(!reset){
+                    reset = true;
+                    last_bf = init_seed;
+                }
+                 i = nstep - j;  // Backward direction
+           }
+
             Eigen::VectorXf ub, lb;
 
             if(with_osc) {
@@ -151,7 +163,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
             log<LOG_INFO>(L"%1% || at a BF param value of @ %2%") % __func__ %  spec_string.c_str();
 
         }    //end spline loop        
-
+        output.sort();
         outs.push_back(output);
 
     }//end thread

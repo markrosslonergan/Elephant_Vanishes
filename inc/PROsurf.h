@@ -36,6 +36,21 @@ struct profOut{
     std::vector<float> knob_vals;
     std::vector<float> knob_chis;
     float chi;
+    
+    void sort(){
+
+        std::vector<std::pair<float, float>> combined;
+        for (size_t i = 0; i < knob_vals.size(); ++i) {
+                combined.emplace_back(knob_vals[i], knob_chis[i]);
+        }
+
+        std::sort(combined.begin(), combined.end());
+         for (size_t i = 0; i < combined.size(); ++i) {
+             knob_vals[i] = combined[i].first;
+             knob_chis[i] = combined[i].second;
+        }
+        return;
+    }
 };
 
 class PROfile {

@@ -60,18 +60,41 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
         }
     }
 
-    PROswarm PSO(metric, rng, latin_samples, lb, ub , 200 );
-    PSO.runSwarm(metric, rng);
+    if(seed_pt.norm()>0){
+            std::vector<float> std_vec(seed_pt.data(), seed_pt.data() + seed_pt.size());
+            latin_samples.push_back(std_vec);
+    }
 
-    //exit(EXIT_FAILURE);
-    
-    // and do Swarmed Point
-    Eigen::VectorXf x;  PSO.getGlobalBestPosition();
+
+    std::vector<float> chi2s_multistart;
+    chi2s_multistart.reserve(n_multistart);
+
+    log<LOG_INFO>(L"%1% || Starting MultiGlobal runs : %2%") % __func__ % n_multistart ;
+    for(int s = 0; s < n_multistart; s++){
+        Eigen::VectorXf x = Eigen::Map<Eigen::VectorXf>(latin_samples[s].data(), latin_samples[s].size());
+        Eigen::VectorXf grad = Eigen::VectorXf::Constant(x.size(), 0);
+        float fx =  metric(x, grad, false);
+        chi2s_multistart.push_back(fx);
+    }
+    //Sort so we can take the best N_localfits for further zoning with a PSO
+    std::vector<int> best_multistart = sorted_indices(chi2s_multistart);    
+
+    log<LOG_DEBUG>(L"%1% || Best Point is  : %2% ") % __func__ % latin_samples[best_multistart[0]];
+
+    std::vector<std::vector<float>> swarm_start_points;
+    int niter=0;
+    float fx;
+    for(int s = 0; s < n_localfit; s++){
+           swarm_start_points.push_back(latin_samples[best_multistart[s]]);
+    }
+
+    PROswarm PSO(metric, rng, swarm_start_points, lb, ub , n_swarm);
+    PSO.runSwarm(metric, rng);
+    Eigen::VectorXf x;  
 
     float chimin = 9999999;
     std::vector<float> chi2s_localfits;
-    int niter=0;
-    float fx;
+    niter=0;
 
     log<LOG_INFO>(L"%1% || Starting Swarm fit %2% %3% %4% ") % __func__ % x.size() % lb.size() % ub.size();
     try {
@@ -146,7 +169,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
 
     // and do Seeded Point
-    if(seed_pt.norm()>0){
+    /*if(seed_pt.norm()>0){
         log<LOG_INFO>(L"%1% || Starting Seed fit ") % __func__  ;
         try {
             x = seed_pt;   
@@ -165,7 +188,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
             log<LOG_WARNING>(L"%1% || Fit failed, %2%") % __func__ % except.what();
         }
     }
-
+    */
 
     // and do CV
      /*
