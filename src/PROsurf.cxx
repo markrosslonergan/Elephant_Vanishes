@@ -75,7 +75,7 @@ void PROsurf::FillSurfaceStat(const PROconfig &config, const LBFGSpp::LBFGSBPara
     delete local_metric;
 }
 
-std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, int start, int end, bool with_osc, const Eigen::VectorXf& init_seed, uint32_t seed) {
+std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, int start, int end, float minchi, bool with_osc, const Eigen::VectorXf& init_seed, uint32_t seed) {
 
     std::vector<profOut> outs;
     // Make a local copy for this thread
@@ -153,7 +153,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
             }else{
                 fx = fitter.Fit(*local_metric);
             }
-            output.knob_chis.push_back(fx);
+            output.knob_chis.push_back(fx - minchi);
             last_bf = fitter.best_fit;
 
 
@@ -330,7 +330,7 @@ std::vector<float> findMinAndBounds(TGraph *g, float val, float lo, float hi) {
 }
 
 
-PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &model, PROmetric &metric, PROseed &proseed, const LBFGSpp::LBFGSBParam<float> &param, std::string filename, bool with_osc, int nThreads, const Eigen::VectorXf & init_seed, const Eigen::VectorXf & true_params) : metric(metric) {
+PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &model, PROmetric &metric, PROseed &proseed, const LBFGSpp::LBFGSBParam<float> &param, std::string filename, float minchi, bool with_osc, int nThreads, const Eigen::VectorXf & init_seed, const Eigen::VectorXf & true_params) : metric(metric) {
     LBFGSpp::LBFGSBSolver<float> solver(param);
     int nparams = systs.GetNSplines() + model.nparams*with_osc;
     std::vector<float> physics_params; 
@@ -369,7 +369,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
         int start = t * chunkSize;
         int end = (t == nThreads - 1) ? loopSize : start + chunkSize;
         futures.emplace_back(std::async(std::launch::async, [&, start, end]() {
-                    return this->PROfilePointHelper(&systs, param, start, end,with_osc,init_seed, proseed.getThreadSeeds()->at(t));
+                    return this->PROfilePointHelper(&systs, param, start, end, minchi, with_osc, init_seed, proseed.getThreadSeeds()->at(t));
                     }));
 
     }
@@ -420,7 +420,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
         if(std::isinf(hi)) hi = hi < 0 ? -5 : 5;
         std::vector<float> tmp = findMinAndBounds(g.get(),1.0, lo, hi);
         barvalues.push_back(float(count)+0.5);
-        barvalues_err.push_back(0.4);
+        barvalues_err.push_back(0.3);
         bfvalues.push_back(tmp[0]);
         values1_down.push_back(tmp[1]);
         values1_up.push_back(tmp[2]);
@@ -444,7 +444,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
 
     //First plot
     int depth = std::ceil((nparams+model.nparams)/4.0);
-    TCanvas *c =  new TCanvas(filename.c_str(), filename.c_str() , 400*4, 400*depth);
+    TCanvas *c =  new TCanvas(filename.c_str(), filename.c_str() , 350*4, 350*depth);
     c->Divide(4,depth);
 
 
@@ -453,11 +453,15 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
 
         c->cd(w+1+zoom_shift);
         std::string xval = w < model.nparams ? "Log_{10}(" + model.pretty_param_names[w]+")" :"#sigma Shift"  ;
-        std::string tit = names[w]+ ";"+xval+"; #Chi^{2}";
+        std::string tit = (w < model.nparams ? names[w] :config.m_mcgen_variation_plotname_map.at(names[w]))+ ";"+xval+"; #Delta#Chi^{2}";
         graphs[w]->SetTitle(tit.c_str());
         graphs[w]->Draw("AL");
         graphs[w]->SetLineWidth(2);
-        
+        graphs[w]->GetYaxis()->SetTitleSize(0.04);             
+        graphs[w]->GetYaxis()->SetLabelSize(0.04);            
+        graphs[w]->GetXaxis()->SetTitleSize(0.04);             
+        graphs[w]->GetXaxis()->SetLabelSize(0.04);            
+
         TLine* line = new TLine(graphs[w]->GetXaxis()->GetXmin(), 1, graphs[w]->GetXaxis()->GetXmax(), 1);
         line->SetLineStyle(3);  // Dotted line style (1 is solid, 2 is dashed, 3 is dotted)
         line->SetLineWidth(1);  // Thin line
@@ -475,36 +479,43 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
 
         if(w==model.nparams-1){
             //on past physics param, lets do a quick zoom, stepping back though the physics param
-            for(size_t zs = 0; zs<model.nparams; zs++){
+            for(int zs = model.nparams-1; zs>=0; zs--){
                 c->cd(w+1+zs+1);
-                std::unique_ptr<TGraph> graphClone = std::make_unique<TGraph>(*graphs[w-zs]);
+                TGraph * graphClone = new TGraph(*graphs[w-zs]);
                 graphClone->Draw("AL");
                 std::string newTitle = std::string(graphClone->GetTitle()) + " Zoomed 1#sigma";
                 graphClone->SetTitle(newTitle.c_str());
                 graphClone->SetLineColor(kViolet);
-                float vd = std::min(values1_down[w]*0.8,values1_up[w]*1.2) ;
-                float vu = std::max(values1_down[w]*0.8,values1_up[w]*1.2) ;
-                graphClone->GetXaxis()->SetLimits(vd,vu); 
-                graphClone->GetYaxis()->SetRangeUser(graphClone->Eval(vd), graphClone->Eval(vu) );
+                float vd = std::min(values1_down[w-zs],values1_up[w-zs]) ;
+                float vu = std::max(values1_down[w-zs],values1_up[w-zs]) ;
+                float pd = (vd>0 ? vd*0.9 : vd*1.1);
+                float pu = (vu >0 ? vu*1.1 : vu*0.9);
+                graphClone->GetXaxis()->SetLimits(pd,pu); 
+                graphClone->GetYaxis()->SetRangeUser(0, std::max(graphClone->Eval(pu),graphClone->Eval(pd))*1.1) ;
+                graphClone->GetYaxis()->SetTitleSize(0.04);             
+                graphClone->GetYaxis()->SetLabelSize(0.04);            
+                graphClone->GetXaxis()->SetTitleSize(0.04);             
+                graphClone->GetXaxis()->SetLabelSize(0.04);            
 
-                TLine *line1 = new TLine(vd, 1, vu, 1);
+                log<LOG_INFO>(L"%1% || Zoom boundaries X %2% %3% Y %4% %5%  ") % __func__ % pd % pu % 0.0 % (std::max(graphClone->Eval(pu),graphClone->Eval(pd))*1.1)  ;
+           
+                TLine *line1 = new TLine(pd, 1, pu, 1);
                 line1->SetLineStyle(3);  
                 line1->SetLineWidth(1);  
                 line1->SetLineColor(kBlack); 
                 line1->Draw();
 
-                TLine* line2 = new TLine(vd, graphs[w]->Eval(vd) ,vd, 0);
+                TLine* line2 = new TLine(vd, graphClone->Eval(vd) ,vd, 0);
                 line2->SetLineStyle(3);  
                 line2->SetLineWidth(1);  
                 line2->SetLineColor(kBlack); 
                 line2->Draw();
 
-                TLine *line3 = new TLine(vu, graphs[w]->Eval(vu) ,vu, 0);
+                TLine *line3 = new TLine(vu, graphClone->Eval(vu) ,vu, 0);
                 line3->SetLineStyle(3);  
                 line3->SetLineWidth(1);  
                 line3->SetLineColor(kBlack); 
                 line3->Draw();
-
             }
             zoom_shift=model.nparams;
         }
@@ -515,7 +526,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     delete c;
 
     //Next version
-    TCanvas *c2 =  new TCanvas((filename+"1sigma").c_str(), (filename+"1sigma").c_str() , 40*nparams, 400);
+    TCanvas *c2 =  new TCanvas((filename+"1sigma").c_str(), (filename+"1sigma").c_str() , 20*nparams, 400);
     c2->cd();
     c2->SetBottomMargin(0.25);
     c2->SetRightMargin(0.05);
@@ -529,8 +540,8 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     h1->SetFillColor(kBlue-7);
     h1->SetStats(0);
     //h1->SetMinimum(min(-1.2,minVal*1.2));
-    h1->SetMinimum(minVal*1.2);
-    h1->SetMaximum(maxVal*1.2);
+    h1->SetMinimum(minVal*1.1);
+    h1->SetMaximum(maxVal*1.1);
 
     h1->GetXaxis()->SetNdivisions(barvalues.size());  // Set number of tick marks
     h1->GetXaxis()->SetLabelSize(0);  // Hide default numerical labels
@@ -539,6 +550,8 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     h1->Draw("A2");
     //h1->GetYaxis()->SetTitle("#sigma Shift");
     onesig = *h1;
+    h1->GetYaxis()->SetTitle("Posterior 1#sigma Error");
+    h1->GetYaxis()->SetTitleOffset(0.8);
 
     float y_min = h1->GetMinimum();
     for (size_t i = 0; i < barvalues.size(); ++i) {
@@ -567,6 +580,18 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     l.SetLineColor(kBlack);
     l.SetLineWidth(1);
     l.Draw();
+    TLine l2(0,-1,nBins+0.5,-1);
+    l2.SetLineStyle(3);
+    l2.SetLineColor(kBlack);
+    l2.SetLineWidth(1);
+    l2.Draw();
+    TLine l3(0,1,nBins+0.5,1);
+    l3.SetLineStyle(3);
+    l3.SetLineColor(kBlack);
+    l3.SetLineWidth(1);
+    l3.Draw();
+
+
 
     for (int i = 0; i < nBins; ++i) {
         TMarker* initstar = new TMarker(i+0.5, init_seed[i], 29);

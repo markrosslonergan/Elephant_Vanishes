@@ -59,9 +59,9 @@ class PROfile {
 	PROmetric &metric;
     TGraphAsymmErrors onesig;
 
-  PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &model, PROmetric &metric, PROseed &proseed, const LBFGSpp::LBFGSBParam<float> &param, std::string filename, bool with_osc = false, int nThreads = 1, const Eigen::VectorXf& init_seed = Eigen::VectorXf(), const Eigen::VectorXf& true_params = Eigen::VectorXf() ) ;
+  PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &model, PROmetric &metric, PROseed &proseed, const LBFGSpp::LBFGSBParam<float> &param, std::string filename, float minchi = 0, bool with_osc = false, int nThreads = 1, const Eigen::VectorXf& init_seed = Eigen::VectorXf(), const Eigen::VectorXf& true_params = Eigen::VectorXf() ) ;
 
-    	std::vector<profOut> PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, int start, int end, bool with_osc, const Eigen::VectorXf& init_seed = Eigen::VectorXf(), uint32_t seed=0);
+    	std::vector<profOut> PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, int start, int end, float minchi, bool with_osc, const Eigen::VectorXf& init_seed = Eigen::VectorXf(), uint32_t seed=0);
 };
 
 class PROsurf {

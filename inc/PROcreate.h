@@ -62,6 +62,8 @@ namespace PROfit{
         std::shared_ptr<PROspec> p_cv;	
         std::vector<std::shared_ptr<PROspec>> p_multi_spec;
 
+        std::vector<int> norm_bins;
+        float norm_value;
 
         //boost serialization
         template<class Archive>
@@ -77,6 +79,8 @@ namespace PROfit{
             ar & p_cv;
             ar & p_multi_spec;  
             ar & hash;
+            ar & norm_bins;
+            ar & norm_value;
         }
 
 

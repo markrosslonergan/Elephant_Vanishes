@@ -133,13 +133,12 @@ namespace PROfit {
         return myspectrum;
     }
 
-    PROspec FillSystRandomThrow(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst) {
+    PROspec FillSystRandomThrow(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, uint32_t seed) {
         Eigen::VectorXf spec = Eigen::VectorXf::Constant(inconfig.m_num_bins_total, 0);
         Eigen::VectorXf cvspec = Eigen::VectorXf::Constant(inconfig.m_num_bins_total, 0);
 
         // TODO: We should think about centralizing rng in a thread-safe/thread-aware way
-        static std::random_device rd{};
-        static std::mt19937 rng{rd()};
+        static std::mt19937 rng{seed};
         std::normal_distribution<float> d;
         std::vector<float> throws;
         //Eigen::VectorXf throwC = Eigen::VectorXf::Constant(inconfig.m_num_bins_total, 0);

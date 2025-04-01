@@ -12,7 +12,7 @@ namespace PROfit {
         shape_only = shapeonly;
         for(const auto& syst: systs) {
             log<LOG_DEBUG>(L"%1% || syst mode: %2%") % __func__ % syst.mode.c_str();
-            if(syst.mode == "spline") {
+            if(syst.mode == "spline" || syst.mode == "norm") {
                 FillSpline(syst);
                 spline_names.push_back(syst.systname); 
                 spline_lo.push_back(syst.knobval[0]);
@@ -384,7 +384,7 @@ namespace PROfit {
                 const float y1 = ratios[0].GetBinContent(i);
                 const float y2 = ratios[1].GetBinContent(i);
                 const float slope = (y2 - y1)/(syst.knobval[1] - syst.knobval[0]);
-                spline.push_back({syst.knobval[0], {slope * syst.knobval[0] + y1, slope, 0, 0}});
+                spline.push_back({(float)syst.knobval[0], {slope * (float)syst.knobval[0] + y1, slope, 0, 0}});
                 spline_coeffs.push_back(spline);
                 continue;
             }

@@ -289,6 +289,7 @@ namespace PROfit{
             int m_num_variation_type_covariance = 0;
             int m_num_variation_type_spline = 0;
             int m_num_variation_type_flat = 0;
+            int m_num_variation_type_norm = 0;
 
             int m_num_mcgen_files;
             std::vector<std::string> m_mcgen_tree_name;	
