@@ -126,7 +126,7 @@ struct simple_proposal {
                     // Symmetry makes this work for upper bound as well
                     float v = std::clamp(value(i), metric.GetSysts().spline_lo[i-nparams], metric.GetSysts().spline_hi[i-nparams]);
                     float g = std::clamp(given(i), metric.GetSysts().spline_lo[i-nparams], metric.GetSysts().spline_hi[i-nparams]);
-                    prob *= 0.5f * (1.0f + std::erff((v - g)/(std::sqrtf(2.0f)*width)));
+                    prob *= 0.5f * (1.0f + std::erff((v - g)/(std::sqrt(2.0f)*width)));
                     //prob = 0;
                 } else {
                     prob *= (1.0f / std::sqrt(2 * M_PI * width * width))
