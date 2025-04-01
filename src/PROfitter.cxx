@@ -59,11 +59,11 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
             }
         }
     }
-
     if(seed_pt.norm()>0){
             std::vector<float> std_vec(seed_pt.data(), seed_pt.data() + seed_pt.size());
             latin_samples.push_back(std_vec);
     }
+
 
 
     std::vector<float> chi2s_multistart;
@@ -111,7 +111,9 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
         for(auto &f : x) spec_string+=" "+std::to_string(f); 
         log<LOG_DEBUG>(L"%1% || Best Point post Swarm is  : %2% ") % __func__ % spec_string.c_str();
     } catch(std::runtime_error &except) {
-        log<LOG_WARNING>(L"%1% || Fit failed, %2%") % __func__ % except.what();
+        log<LOG_WARNING>(L"%1% || Fit failed, falling back on swarm best, %2%") % __func__ % except.what();
+        best_fit = PSO.getGlobalBestPosition();
+        chimin = PSO.getGlobalBestScore(); 
     }
 
 
