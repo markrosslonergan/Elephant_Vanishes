@@ -14,7 +14,7 @@ public:
     LBFGSpp::LBFGSBParam<float> param;
     LBFGSpp::LBFGSBSolver<float> solver;
     int n_multistart = 1250, n_swarm_particles = 25, n_swarm_iterations=200;
-    size_t n_max_local_retries = 2;
+    size_t n_max_local_retries = 3;
 
     uint32_t seed;
 

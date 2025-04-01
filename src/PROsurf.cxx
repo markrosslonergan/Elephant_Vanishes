@@ -137,11 +137,6 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
             float fx;
             output.knob_vals.push_back(which_value);
 
-            //log<LOG_INFO>(L"%1% || Fixed value of spline # %2% is value %3%, has a chi PRE of : %4% (i %5% nstep %6% || ub %7% lb %8% ") % __func__ % which_spline % which_value % fx % i % nstep % lb.size() % ub.size() ;
-            //std::vector<float> ubv(ub.data(), ub.data() + ub.size());
-            //std::vector<float> lbv(lb.data(), lb.data() + lb.size());
-            //log<LOG_INFO>(L"%1% || lb %2%  ub %3% ") % __func__ % lbv % ubv  ;
-
             lb[which_spline] = which_value;
             ub[which_spline] = which_value;
 
@@ -162,7 +157,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
             log<LOG_INFO>(L"%1% || Fixed value of spline # %2% is value %3%, has a chi post of : %4% (i %5% nstep %6% ") % __func__ % which_spline % which_value % fx % i % nstep;
             log<LOG_INFO>(L"%1% || at a BF param value of @ %2%") % __func__ %  spec_string.c_str();
 
-        }    //end spline loop        
+        }    //end step loop        
         output.sort();
         outs.push_back(output);
 
