@@ -49,8 +49,8 @@ namespace PROfit{
         std::string mode;  //'multisim', 'minmax', and 'multisig'
         std::string weight_formula;
 
-        std::vector<float> knobval;
-        std::vector<float> knob_index;
+        std::vector<eweight_type> knobval;
+        std::vector<eweight_type> knob_index;
 
         int index;
         uint32_t hash;
@@ -86,7 +86,7 @@ namespace PROfit{
         SystStruct(const std::string& in_systname, const int in_n_univ): SystStruct(in_systname, in_n_univ, "multisim", "1",{},{},0){hash=-1;}
 
         /*Function: Constructor for a systematic from knobs*/
-        SystStruct(const std::string& in_systname, const int in_n_univ, const std::string& in_mode, const std::string& in_formula, const std::vector<float>& in_knobval, const std::vector<float>& in_knob_index, const int in_index): systname(in_systname), n_univ(in_n_univ), mode(in_mode), weight_formula(in_formula), knobval(in_knobval), knob_index(in_knob_index), index(in_index){}
+        SystStruct(const std::string& in_systname, const int in_n_univ, const std::string& in_mode, const std::string& in_formula, const std::vector<eweight_type>& in_knobval, const std::vector<eweight_type>& in_knob_index, const int in_index): systname(in_systname), n_univ(in_n_univ), mode(in_mode), weight_formula(in_formula), knobval(in_knobval), knob_index(in_knob_index), index(in_index){}
 
         inline
             void SetMode(const std::string& in_mode){mode = in_mode; return;}
@@ -216,16 +216,8 @@ namespace PROfit{
 
     /* Function: Process spline weights and covariance matrices from uboone CAFAna output trees
     */
-    int PROcess_CAFAna(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector, PROpeller &inprop);
+    int PROcess_CAFAna(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector, PROpeller &inprop, bool noxrootd = false);
 
-    /* Function: Process spline weights AND covariance matrices from flat CAF's 
-    */
-    int PROcess_CAFs(const PROconfig &inconfig, std::vector<SystStruct>& syst_vector, PROpeller &inprop);
-
-
-    /* Function: Event by event processing for PROcess_CAFs
-    */
-    int PROcess_CAF_Event(std::vector<std::unique_ptr<TTreeFormula>> & formulas, std::vector<SystStruct> &syst_vector, CAFweightHelper &caf_helper, float add_weight, long int global_bin, long int global_true_bin);
 
     /* Function: given configuration, generate spectrum at central value. 
      * Note: assume the input config has SBNfit-style files, TODO: check if compatible with CAF-style

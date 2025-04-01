@@ -4,6 +4,7 @@
 #include <sstream>
 #include <boost/format.hpp>
 #include <iostream>
+#include <iomanip>
 #include <exception>
 #include <vector>
 
@@ -54,17 +55,37 @@ namespace log_impl {
                 fmt % ss.str();
                 return *this;
             }
-            template<typename Scalar, int RowsAtCompileTime, int ColsAtCompileTime, int Options,
-                        int MaxRowsAtCompileTime, int MaxColsAtCompileTime>
+            template<typename Scalar, int RowsAtCompileTime, int ColsAtCompileTime, int Options, int MaxRowsAtCompileTime, int MaxColsAtCompileTime>
             formatted_log_t& operator %(const Eigen::Matrix<Scalar, RowsAtCompileTime, ColsAtCompileTime, Options, MaxRowsAtCompileTime, MaxColsAtCompileTime>& vec) {
                 std::wstringstream ss;
-                ss << L"[";
-                // TODO: Probably broken for matrices
-                for (int i = 0; i < vec.size(); ++i) {
-                    if (i != 0) ss << L", ";
-                    ss << vec[i];
+                if constexpr(ColsAtCompileTime == 1 || RowsAtCompileTime == 1) {
+                    ss << L"[";
+                    for (int i = 0; i < vec.size(); ++i) {
+                        if (i != 0) ss << L", ";
+                        ss << vec(i);
+                    }
+                    ss << L"]";
+                } else if constexpr(RowsAtCompileTime == -1 && ColsAtCompileTime == -1) {
+                    for(int row = 0; row < vec.rows(); ++row) {
+                        ss << L"\n[ ";
+                        for(int col = 0; col < vec.cols(); ++col) {
+                            ss << std::setw(6) << std::setprecision(3)
+                               << vec(row, col) << " ";
+                        }
+                        ss << L"]";
+                    }
+                    ss << "\n";
+                } else {
+                    for(int row = 0; row < RowsAtCompileTime; ++row) {
+                        ss << L"\n[ ";
+                        for(int col = 0; col < ColsAtCompileTime; ++col) {
+                            ss << std::setw(6) << std::setprecision(3)
+                               << vec(row, col) << " ";
+                        }
+                        ss << L"]";
+                    }
+                    ss << "\n";
                 }
-                ss << L"]";
                 fmt % ss.str();
                 return *this;
             }

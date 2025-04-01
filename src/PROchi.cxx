@@ -65,7 +65,6 @@ float PROchi::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &gradient
     log<LOG_DEBUG>(L"%1% || nparams is %2%, nsyst is %3% ") % __func__ % nparams % nsyst;    
 
     // Get Spectra from FillRecoSpectra
-    Eigen::VectorXf subvector1 = param.segment(0, nparams - nsyst);
     Eigen::VectorXf subvector2 = param.segment(nparams - nsyst, nsyst);
     
     PROspec result = FillRecoSpectra(config, peller, *syst, model, param, strat == BinnedChi2);
@@ -95,7 +94,6 @@ float PROchi::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &gradient
             //if(fitparams.size() != 0 && i == 1 && param(i) > 0 - dval) sgn = -1;
             tmpParams(i) = /*param(i) != last_param(i) ? param(i) :*/ param(i) + sgn * dval;
             
-            Eigen::VectorXf subvector1 = tmpParams.segment(0, nparams - nsyst);
             Eigen::VectorXf subvector2 = tmpParams.segment(nparams - nsyst, nsyst);
             PROspec result = FillRecoSpectra(config, peller, *syst, model, tmpParams, strat != EventByEvent);
             // Calcuate Full Covariance matrix

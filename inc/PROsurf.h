@@ -42,6 +42,7 @@ class PROfile {
 
         public:
 	PROmetric &metric;
+    TGraphAsymmErrors onesig;
 
   PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &model, PROmetric &metric, PROseed &proseed, const LBFGSpp::LBFGSBParam<float> &param, std::string filename, bool with_osc = false, int nThreads = 1, const Eigen::VectorXf& init_seed = Eigen::VectorXf(), const Eigen::VectorXf& true_params = Eigen::VectorXf() ) ;
 

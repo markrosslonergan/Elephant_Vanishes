@@ -49,12 +49,24 @@ void PROsurf::FillSurfaceStat(const PROconfig &config, const LBFGSpp::LBFGSBPara
 
     PROmetric *local_metric = metric.Clone();
     local_metric->override_systs(dummy_syst);
+    float min_chi = 1e9;
 
     for(size_t i = 0; i < nbinsx; i++) {
         for(size_t j = 0; j < nbinsy; j++) {
             Eigen::VectorXf physics_params{{(float)edges_y(j), (float)edges_x(i)}};
             float fx = (*local_metric)(physics_params, empty_vec, false);
+            if(fx < min_chi) min_chi = fx;
             surface(i, j) = fx;
+            if(!filename.empty()){
+                chi_file<<"\n"<<edges_x(i)<<" "<<edges_y(j)<<" "<<fx<<std::flush;
+            }
+        }
+    }
+    for(size_t i = 0; i < nbinsx; ++i) {
+        for(size_t j = 0; j < nbinsy; ++j) {
+            float fx = surface(i,j); 
+            fx -= min_chi;
+            surface(i,j) = fx;
             if(!filename.empty()){
                 chi_file<<"\n"<<edges_x(i)<<" "<<edges_y(j)<<" "<<fx<<std::flush;
             }
@@ -235,22 +247,30 @@ void PROsurf::FillSurface(const LBFGSpp::LBFGSBParam<float> &param, std::string 
         combinedResults.insert(combinedResults.end(), result.begin(), result.end());
     }
 
-    chi_file << "Dimensions: " << nbinsx << " " << nbinsy << "\n";
-    chi_file << "Fixed indices: " << x_idx << " " << y_idx << "\n";
-    chi_file << "Parameters:\n";
-    for(const auto &name: metric.GetModel().param_names) chi_file << name << "\n";
-    for(const auto &name: metric.GetSysts().spline_names) chi_file << name << "\n";
+    if(filename != "") {
+        chi_file << "Dimensions: " << nbinsx << " " << nbinsy << "\n";
+        chi_file << "Fixed indices: " << x_idx << " " << y_idx << "\n";
+        chi_file << "Parameters:\n";
+        for(const auto &name: metric.GetModel().param_names) chi_file << name << "\n";
+        for(const auto &name: metric.GetSysts().spline_names) chi_file << name << "\n";
 
-    chi_file << "\nxval yval chi2";
-    for(size_t i = 0; i < metric.GetModel().nparams + metric.GetSysts().GetNSplines(); ++i)
-        chi_file << " p" << i;
+        chi_file << "\nxval yval chi2";
+        for(size_t i = 0; i < metric.GetModel().nparams + metric.GetSysts().GetNSplines(); ++i)
+            chi_file << " p" << i;
+    }
+    float min_chi = 1e9;
+    for(const auto &item: combinedResults) {
+        if(item.chi < min_chi) min_chi = item.chi;
+    }
     for (const auto& item : combinedResults) {
-        log<LOG_INFO>(L"%1% || Finished  : %2% %3% %4%") % __func__ % item.grid_val[1] % item.grid_val[0] %item.chi ;
-        surface(item.grid_index[0], item.grid_index[1]) = item.chi;
-        results.push_back({item.grid_index[0], item.grid_index[1], item.best_fit, item.chi});
-        chi_file<<"\n"<<item.grid_val[1]<<" "<<item.grid_val[0]<<" "<<item.chi;
-        for(float val: item.best_fit)
-            chi_file << " " << val;
+        log<LOG_INFO>(L"%1% || Finished  : %2% %3% %4%") % __func__ % item.grid_val[1] % item.grid_val[0] % (item.chi - min_chi);
+        surface(item.grid_index[0], item.grid_index[1]) = item.chi - min_chi;
+        results.push_back({item.grid_index[0], item.grid_index[1], item.best_fit, (item.chi-min_chi)});
+        if(filename != "") {
+            chi_file<<"\n"<<item.grid_val[1]<<" "<<item.grid_val[0]<<" "<<(item.chi-min_chi);
+            for(float val: item.best_fit)
+                chi_file << " " << val;
+        }
     }
 }
 
@@ -486,7 +506,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     TCanvas *c2 =  new TCanvas((filename+"1sigma").c_str(), (filename+"1sigma").c_str() , 40*nparams, 400);
     c2->cd();
     c2->SetBottomMargin(0.25);
-    c2->SetRightMargin(0.5);
+    c2->SetRightMargin(0.05);
 
     log<LOG_DEBUG>(L"%1% || Are all lines the same : %2% %3% %4% %5% %6%") % __func__ % nBins % barvalues.size() % bfvalues.size() % values1_down.size() % values1_up.size() ;
 
@@ -506,6 +526,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     h1->SetTitle("");
     h1->Draw("A2");
     //h1->GetYaxis()->SetTitle("#sigma Shift");
+    onesig = *h1;
 
     float y_min = h1->GetMinimum();
     for (size_t i = 0; i < barvalues.size(); ++i) {

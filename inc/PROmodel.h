@@ -5,6 +5,7 @@
 
 #include <Eigen/Eigen>
 
+#include <Eigen/src/Core/Matrix.h>
 #include <cstdlib>
 #include <functional>
 #include <limits>
@@ -22,6 +23,21 @@ public:
     Eigen::VectorXf lb, ub, default_val;
     std::vector<std::function<float(const Eigen::VectorXf&, float)>> model_functions;
     std::vector<Eigen::MatrixXf> hists; //2D hists for binned oscilattions
+};
+
+class NullModel : public PROmodel {
+public:
+    NullModel(const PROpeller &prop) {
+        nparams = 0;
+        model_functions.push_back([](const Eigen::VectorXf &, float){ return 1.0f; });
+
+        hists.emplace_back(Eigen::MatrixXf::Constant(prop.hist.rows(), prop.hist.cols(),0.0));
+        Eigen::MatrixXf &h = hists.back();
+        for(size_t i = 0; i < prop.bin_indices.size(); ++i) {
+            int tbin = prop.true_bin_indices[i], rbin = prop.bin_indices[i];
+            h(tbin, rbin) += prop.added_weights[i];
+        }
+    }
 };
 
 class PROnumudis : public PROmodel {
@@ -48,7 +64,7 @@ public:
         default_val = Eigen::VectorXf(2);
         lb << -2, -std::numeric_limits<float>::infinity();
         ub << 2, 0;
-        default_val << -std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity();
+        default_val << -10, -10;
     };
 
     /* Function: 3+1 numu->numue disapperance prob in SBL approx */

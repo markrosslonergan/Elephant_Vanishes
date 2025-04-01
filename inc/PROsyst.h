@@ -111,6 +111,8 @@ namespace PROfit {
             PROspec GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::vector<int> syst_nums, std::vector<float> shifts) const;
             PROspec GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::vector<float> shifts) const;
 
+            Eigen::MatrixXf DecomposeFractionalCovariance(const PROconfig &config, const Eigen::VectorXf &cv_vec) const;
+
 
             /* the fractional covariance that is the sum of all during constructor*/
             Eigen::MatrixXf fractional_covariance;

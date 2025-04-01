@@ -1,7 +1,13 @@
-![Alt text](/other/profit.png "Minimizing PROfit")
+
+<p align="center">
+<img src="/other/profit.png" width="350">
+</p>
+<h1 align="center">PROfit</h1>
+<h1 align="center">A PROfessional, PROductive, PROficient and PROfound optimization and oscillations fitting framework.</h1>
 
 
-## Installing through Python Interface
+
+# General Installation Instructions
 
 You should start from an environment with ROOT, HDF5, and BOOST already installed or setup. These can be installed on linux with apt-get, or on mac with homebrew. On the FNAL servers, you can get these setup by running:
 ```
@@ -12,7 +18,34 @@ setup hdf5 v1_12_2b -q e26:prof
 setup boost v1_82_0 -q e26:prof
 ```
 
-With these packages avialble, setup a python environment:
+While we aim to keep generic to these versions, we confirm that with the above versions PROfit compiles and works on GPVMs.
+
+## Installing through CMAKE
+
+```
+mkdir PROfit
+cd PROfit
+git clone https://github.com/markrosslonergan/Elephant_Vanishes.git
+cd Elephant_Vanishes/build
+cmake ..
+make -j 64
+```
+
+You can the add the PROfit executables to your path if you so wish
+```
+export PATH=$PATH:$PWD/bin
+```
+
+### Installed dependancies
+In order to insure compatability, some smaller depedancies will be installed by the CMAKE scripts. These include
+  * Eigen, 3.4.0 https://gitlab.com/libeigen/eigen.git
+  * TinyXML2, 9.0.0 https://github.com/leethomason/tinyxml2.git
+  * lbfgspp, our own fork of v0.3.0 https://github.com/yixuan/LBFGSpp.git
+
+
+## Installing through Python Interface
+
+With global ROOT, hdf5 and boost avialble, setup a python environment:
 ```
 python -m venv env
 . env/bin/activate
@@ -29,7 +62,7 @@ pip install git+https://github.com/gputnam/Elephant_Vanishes
 
 Then you're done! You can now ``import profit`` in a python shell, run the python executables (``PROsurf.py``, e.g.), or run the PRO* binary executables with the ``PRO`` helper (``PRO PROsurf``, e.g.).
 
-### Installing for Development
+### Installing for Development through Python Interface
 
 If you want to develop PROfit, then it is useful to clone down a local copy of the repository and then install it. Start with the same steps to initialize your python virtual environment:
 ```
@@ -50,13 +83,13 @@ pip install .
 ```
 If you make some changes, you can update the installation by re-running ``pip install .``
 
-## Usage
+# Usage
 
-### Basic Description of main classes and use cases
+
+## Basic Description of main classes and use cases
 
 - **PROlog** : Fairly simple logging/verbosity wrapper class. This is the only way PROfit should print. Usage as:
     -       log<LOG_DEBUG>(L"%1% || Using a total of %2% individual files") % __func__  % num_files;
-    - LOG CRITICAL = 0
     - LOG ERROR = 1
     - LOG WARNING = 2
     - LOG INFO = 3 :  This should be level of standard physics output that someone would plausibly use, but not create giant log files!
@@ -83,34 +116,8 @@ If you make some changes, you can update the installation by re-running ``pip in
 - **PROchi** : Class that gathers the MC (PROpeller), Systematics (PROsyst) and model (PROsc) and forms a function calculating a chi^2 that can be minimized over
 
 
-### Some Possible PRO class names abailable 
-PROtest
-PROfessional
-PROspect
-PROton
-PROpane
-PROcrastiation
-PRO.file
-PROtect
-PROcreate
-PROduce
-PROgress
-PROfane
-PROfanity
-PROlapse
-PROtocoll
+### Some Possible PRO class names available 
+PROtest, PROfessional, PROspect, PROton, PROpane, PROcrastiation, PRO.file, PROtect, PROcreate, PROduce, PROgress, PROfane, PROfanity, PROlapse, PROtocoll
 
 
-### Junk notes below here. Put somewhere better 
-  rec.slc.truth.wgt..length = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 0, 0                                                         
-  rec.slc.truth.wgt..totarraysize = 130                                                                
-  rec.slc.truth.wgt.univ..length = 6,  6, 6, 6, 6, 6, 6, 6, 6, 6, 6,  6, 6, 6, 6, 6, 6, 6, 6, 6, rec.slc.truth.wgt.univ..length[rec.slc.truth.wgt..totarraysize
-  rec.slc.truth.wgt.univ..totarraysize = 17559
-  rec.slc.truth.wgt.univ = 1,  1, 1, 1, 1, 1,   1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 0.861389, 1.15461   .. of length [rec.slc.truth.wgt.univ..totarraysize - 17559 Float] 
-  rec.slc.truth.wgt.univ..idx = 0, 6, 12, 18, 24, 30, 36, 42, 48, 54, 60, 66, 72, 78, 84, 90, 96, 102, 108, 114  .. of lngth [rec.slc.truth.wgt..totarraysize INT]
-  rec.slc.truth.wgt..idx = 0,            of length [ rec.slc..length ]
-
-  (rec.slc[si].truth.wgt[wi].univ[take next N])    [NUM]
-  rec.slc.truth.wgh.univ[rec.slc.truth.wgt..idx[SLC]+I]+6
-   
 
