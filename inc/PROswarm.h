@@ -77,7 +77,7 @@ namespace PROfit{
                 size_t stagnant_iterations = 0;
                 float previous_best_chi = global_best_chi;
 
-                const float vmax_factor = 0.1;  // 10% of parameter range
+                const float vmax_factor = 0.1;  
                 Eigen::VectorXf vmax = vmax_factor * (ub - lb);
 
                 log<LOG_INFO>(L"%1% ||  Swarm starting with %2% inertia, %3% cognitive and %4% social weights  ") % __func__ % inertia_w_start % cognitive_w % social_w  ;
