@@ -13,7 +13,7 @@ public:
     Eigen::VectorXf ub, lb, best_fit;
     LBFGSpp::LBFGSBParam<float> param;
     LBFGSpp::LBFGSBSolver<float> solver;
-    int n_multistart = 1250, n_swarm_iterations_particles = 25, n_swarm_iterations=200;
+    int n_multistart = 1250, n_swarm_particles = 25, n_swarm_iterations=200;
     size_t n_max_local_retries = 2;
 
     uint32_t seed;
