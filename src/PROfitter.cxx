@@ -46,7 +46,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     std::normal_distribution<float> d;
     std::uniform_real_distribution<float> d_uni(-2.0, 2.0);
 
-    std::vector<std::vector<float>> latin_samples = latin_hypercube_sampling(n_multistart, ub.size(),  d_uni,rng);
+    std::vector<std::vector<float>> latin_samples = latin_hypercube_sampling(fitconfig.n_multistart, ub.size(), d_uni,rng);
 
     //Rescale the latin hypercube now at -2 to 2, scale to real bounds.
     for(std::vector<float> &pt: latin_samples) {
@@ -69,10 +69,10 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
 
     std::vector<float> chi2s_multistart;
-    chi2s_multistart.reserve(n_multistart);
+    chi2s_multistart.reserve(fitconfig.n_multistart);
 
-    log<LOG_INFO>(L"%1% || Starting MultiGlobal runs : %2%") % __func__ % n_multistart ;
-    for(int s = 0; s < n_multistart; s++){
+    log<LOG_INFO>(L"%1% || Starting MultiGlobal runs : %2%") % __func__ % fitconfig.n_multistart ;
+    for(int s = 0; s < fitconfig.n_multistart; s++){
         Eigen::VectorXf x = Eigen::Map<Eigen::VectorXf>(latin_samples[s].data(), latin_samples[s].size());
         Eigen::VectorXf grad = Eigen::VectorXf::Constant(x.size(), 0);
         float fx =  metric(x, grad, false);
@@ -82,6 +82,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     std::vector<int> best_multistart = sorted_indices(chi2s_multistart);    
 
     log<LOG_INFO>(L"%1% || Best Point after latin hypercube has chi^2 %2% with pts  : %3% ") % __func__ % chi2s_multistart[best_multistart[0]] % latin_samples[best_multistart[0]];
+  
 
     std::string swarm_string = "";
     std::vector<std::vector<float>> swarm_start_points;
@@ -93,8 +94,11 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     }
     log<LOG_INFO>(L"%1% || This along with %2% swarm points chis of %3% ") % __func__ % n_swarm_particles % swarm_string.c_str();
 
+
     PROswarm PSO(metric, rng, swarm_start_points, lb, ub , n_swarm_iterations);
     PSO.runSwarm(metric, rng);
+   
+    
     Eigen::VectorXf x;  
 
     float chimin = 9999999;

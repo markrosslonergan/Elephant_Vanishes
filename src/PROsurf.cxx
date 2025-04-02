@@ -1,11 +1,16 @@
 #include "PROsurf.h"
-#include "LBFGSpp/Param.h"
 #include "PROfitter.h"
 #include "PROlog.h"
 
 #include <Eigen/Eigen>
+
 #include <cmath> 
+#include <future>
+
+#include "TGraph.h"
 #include "TLatex.h"
+#include "TLine.h"
+#include "TMarker.h"
 
 using namespace PROfit;
 
@@ -52,7 +57,7 @@ PROsurf::PROsurf(PROmetric &metric,  size_t x_idx, size_t y_idx, size_t nbinsx, 
         edges_y(i) = y_lo + i * (y_hi - y_lo) / nbinsy;
 }
 
-void PROsurf::FillSurfaceStat(const PROconfig &config, const LBFGSpp::LBFGSBParam<float> &param, std::string filename) {
+void PROsurf::FillSurfaceStat(const PROconfig &config, const PROfitterConfig &fitconfig, std::string filename) {
     std::ofstream chi_file;
     if(!filename.empty()){
         chi_file.open(filename);
@@ -69,7 +74,7 @@ void PROsurf::FillSurfaceStat(const PROconfig &config, const LBFGSpp::LBFGSBPara
     }
 
     // I think this will be needed for stat fits with more than 2 physics parameters
-    (void)param;
+    (void)fitconfig;
 
     PROsyst dummy_syst;
     dummy_syst.fractional_covariance = Eigen::MatrixXf::Constant(config.m_num_bins_total, config.m_num_bins_total, 0);
@@ -103,7 +108,7 @@ void PROsurf::FillSurfaceStat(const PROconfig &config, const LBFGSpp::LBFGSBPara
     delete local_metric;
 }
 
-std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBFGSpp::LBFGSBParam<float> &param, int start, int end, float minchi, bool with_osc, const Eigen::VectorXf& init_seed, uint32_t seed) {
+std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PROfitterConfig &fitconfig, int start, int end, float minchi, bool with_osc, const Eigen::VectorXf& init_seed, uint32_t seed) {
 
     std::vector<profOut> outs;
     // Make a local copy for this thread
@@ -184,7 +189,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
 
             local_metric->fixSpline(which_spline,which_value);
 
-            PROfitter fitter(ub, lb, param, seed+i);
+            PROfitter fitter(ub, lb, fitconfig, seed+i);
             if(last_bf.norm()>0){
                 fx = fitter.Fit(*local_metric,last_bf);
             }else{
@@ -210,7 +215,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const LBF
     return outs;
 }
 
-std::vector<surfOut> PROsurf::PointHelper(const LBFGSpp::LBFGSBParam<float> &param, std::vector<surfOut> multi_physics_params, int start, int end, uint32_t seed){
+std::vector<surfOut> PROsurf::PointHelper(const PROfitterConfig &fitconfig, std::vector<surfOut> multi_physics_params, int start, int end, uint32_t seed){
 
     std::vector<surfOut> outs;
 
@@ -246,7 +251,7 @@ std::vector<surfOut> PROsurf::PointHelper(const LBFGSpp::LBFGSBParam<float> &par
         lb(y_idx) = multi_physics_params[i].grid_val[0];
         ub(y_idx) = multi_physics_params[i].grid_val[0];
 
-        PROfitter fitter(ub, lb, param, seed+i);
+        PROfitter fitter(ub, lb, fitconfig, seed+i);
         output.chi = fitter.Fit(*local_metric);
         output.best_fit = fitter.best_fit;
         outs.push_back(output);
@@ -258,7 +263,7 @@ std::vector<surfOut> PROsurf::PointHelper(const LBFGSpp::LBFGSBParam<float> &par
 }
 
 
-void PROsurf::FillSurface(const LBFGSpp::LBFGSBParam<float> &param, std::string filename, PROseed &proseed, int nThreads) {
+void PROsurf::FillSurface(const PROfitterConfig &fitconfig, std::string filename, PROseed &proseed, int nThreads) {
     std::ofstream chi_file;
     if(!filename.empty()){
         chi_file.open(filename);
@@ -285,7 +290,7 @@ void PROsurf::FillSurface(const LBFGSpp::LBFGSBParam<float> &param, std::string 
         int start = t * chunkSize;
         int end = (t == nThreads - 1) ? loopSize : start + chunkSize;
         futures.emplace_back(std::async(std::launch::async, [&, start, end]() {
-                    return this->PointHelper(param, grid, start, end, proseed.getThreadSeeds()->at(t));
+                    return this->PointHelper(fitconfig, grid, start, end, proseed.getThreadSeeds()->at(t));
                     }));
 
     }
@@ -367,8 +372,8 @@ std::vector<float> findMinAndBounds(TGraph *g, float val, float lo, float hi) {
 }
 
 
-PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &model, PROmetric &metric, PROseed &proseed, const LBFGSpp::LBFGSBParam<float> &param, std::string filename, float minchi, bool with_osc, int nThreads, const Eigen::VectorXf & init_seed, const Eigen::VectorXf & true_params) : metric(metric) {
-    LBFGSpp::LBFGSBSolver<float> solver(param);
+PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &model, PROmetric &metric, PROseed &proseed, const PROfitterConfig &fitconfig, std::string filename, float minchi, bool with_osc, int nThreads, const Eigen::VectorXf & init_seed, const Eigen::VectorXf & true_params) : metric(metric) {
+    LBFGSpp::LBFGSBSolver<float> solver(fitconfig.param);
     int nparams = systs.GetNSplines() + model.nparams*with_osc;
     std::vector<float> physics_params; 
 
@@ -406,7 +411,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
         int start = t * chunkSize;
         int end = (t == nThreads - 1) ? loopSize : start + chunkSize;
         futures.emplace_back(std::async(std::launch::async, [&, start, end]() {
-                    return this->PROfilePointHelper(&systs, param, start, end, minchi, with_osc, init_seed, proseed.getThreadSeeds()->at(t));
+                    return this->PROfilePointHelper(&systs, fitconfig, start, end, minchi, with_osc, init_seed, proseed.getThreadSeeds()->at(t));
                     }));
 
     }

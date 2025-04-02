@@ -72,7 +72,7 @@ struct fc_args {
     std::string chi2;
     const Eigen::VectorXf phy_params;
     const Eigen::MatrixXf L;
-    LBFGSpp::LBFGSBParam<float> param;
+    PROfitterConfig fitconfig;
     uint32_t seed;
     const int thread;
     const bool binned;
@@ -134,11 +134,11 @@ void fc_worker(fc_args args) {
 
         // No oscillations
         std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
-        PROfitter fitter(ub, lb, args.param, dseed(rng));
+        PROfitter fitter(ub, lb, args.fitconfig, dseed(rng));
         float chi2_syst = fitter.Fit(*null_metric);
 
         // With oscillations
-        PROfitter fitter_osc(ub_osc, lb_osc, args.param, dseed(rng));
+        PROfitter fitter_osc(ub_osc, lb_osc, args.fitconfig, dseed(rng));
         float chi2_osc = fitter_osc.Fit(*metric); 
 
         Eigen::VectorXf t = Eigen::VectorXf::Map(throws.data(), throws.size());
@@ -468,19 +468,19 @@ int main(int argc, char* argv[])
     std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
     
     //Some global minimizer params
-    LBFGSpp::LBFGSBParam<float> param;  
-    param.epsilon = 1e-6;
-    param.max_iterations = 100;
-    param.max_linesearch = 250;
-    param.delta = 1e-6;
+    PROfitterConfig fitconfig;
+    fitconfig.param.epsilon = 1e-6;
+    fitconfig.param.max_iterations = 100;
+    fitconfig.param.max_linesearch = 250;
+    fitconfig.param.delta = 1e-6;
     for(const auto &[param_name, value]: fit_options) {
         log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
         if(param_name == "epsilon") {
-            param.epsilon = value;
+            fitconfig.param.epsilon = value;
         } else if(param_name == "delta") {
-            param.delta = value;
+            fitconfig.param.delta = value;
         } else if(param_name == "m") {
-            param.m = value;
+            fitconfig.param.m = value;
             if(value < 3) {
                 log<LOG_WARNING>(L"%1% || Number of corrections to approximate inverse Hessian in"
                                  L" L-BFGS-B is recommended to be at least 3, provided value is %2%."
@@ -488,40 +488,54 @@ int main(int argc, char* argv[])
                     % __func__ % value;
             }
         } else if(param_name == "epsilon_rel") {
-            param.epsilon_rel = value;
+            fitconfig.param.epsilon_rel = value;
         } else if(param_name == "past") {
-            param.past = value;
+            fitconfig.param.past = value;
             if(value == 0) {
                 log<LOG_WARNING>(L"%1% || L-BFGS-B 'past' parameter set to 0. This will disable delta convergence test")
                     % __func__;
             }
         } else if(param_name == "max_iterations") {
-            param.max_iterations = value;
+            fitconfig.param.max_iterations = value;
         } else if(param_name == "max_submin") {
-            param.max_submin = value;
+            fitconfig.param.max_submin = value;
         } else if(param_name == "max_linesearch") {
-            param.max_linesearch = value;
+            fitconfig.param.max_linesearch = value;
         } else if(param_name == "min_step") {
-            param.min_step = value;
+            fitconfig.param.min_step = value;
             log<LOG_WARNING>(L"%1% || Modifying the minimum step size in the line search to be %2%."
                              L" This is not usually needed according to the LBFGSpp documentation.")
                 % __func__ % value;
         } else if(param_name == "max_step") {
-            param.max_step = value;
+            fitconfig.param.max_step = value;
             log<LOG_WARNING>(L"%1% || Modifying the maximum step size in the line search to be %2%."
                              L" This is not usually needed according to the LBFGSpp documentation.")
                 % __func__ % value;
         } else if(param_name == "ftol") {
-            param.ftol = value;
+            fitconfig.param.ftol = value;
         } else if(param_name == "wolfe") {
-            param.wolfe = value;
+            fitconfig.param.wolfe = value;
+        } else if(param_name == "n_multistart") {
+            fitconfig.n_multistart = value;
+            if(fitconfig.n_multistart < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 multistart point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
+        } else if(param_name == "n_localfit") {
+            fitconfig.n_localfit = value;
+            if(fitconfig.n_localfit < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 local fit point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
         } else {
             log<LOG_WARNING>(L"%1% || Unrecognized LBFGSB parameter %2%. Will ignore.") 
                 % __func__ % param_name.c_str();
         }
     }
     try {
-        param.check_param();
+        fitconfig.print();
     } catch(std::invalid_argument &except) {
         log<LOG_ERROR>(L"%1% || Invalid L-BFGS-B parameters: %2%") % __func__ % except.what();
         log<LOG_ERROR>(L"Terminating.");
@@ -566,7 +580,8 @@ int main(int argc, char* argv[])
             lb(i) = metric_to_use->GetSysts().spline_lo[i-nphys];
             ub(i) = metric_to_use->GetSysts().spline_hi[i-nphys];
         }
-        PROfitter fitter(ub, lb, param, dseed(main_rng));
+        PROfitter fitter(ub, lb, fitconfig);
+
 
         float chi2 = fitter.Fit(*metric_to_use); 
         Eigen::VectorXf best_fit = fitter.best_fit;
@@ -600,7 +615,7 @@ int main(int argc, char* argv[])
         }
         c.Print((final_output_tag+"_postfit_posteriors.pdf]").c_str());
 
-        PROfile profile(config, metric_to_use->GetSysts(), metric_to_use->GetModel(), *metric_to_use, myseed, param, 
+        PROfile profile(config, metric_to_use->GetSysts(), metric_to_use->GetModel(), *metric_to_use, myseed, fitconfig, 
                 final_output_tag+"_PROfile", chi2, !systs_only_profile, nthread, best_fit,
                 systs_only_profile ? systparams : allparams);
         TFile fout((final_output_tag+"_PROfile.root").c_str(), "RECREATE");
@@ -652,9 +667,9 @@ int main(int argc, char* argv[])
 
         if(!only_brazil) {
             if(statonly)
-                surface.FillSurfaceStat(config, param, final_output_tag+"_statonly_surface.txt");
+                surface.FillSurfaceStat(config, fitconfig, final_output_tag+"_statonly_surface.txt");
             else
-                surface.FillSurface(param, final_output_tag+"_surface.txt",myseed,nthread);
+                surface.FillSurface(fitconfig, final_output_tag+"_surface.txt",myseed,nthread);
         }
 
         std::vector<float> binedges_x, binedges_y;
@@ -753,9 +768,9 @@ int main(int argc, char* argv[])
                         nbinsy, logy ? PROsurf::LogAxis : PROsurf::LinAxis, ylo, yhi);
 
                 if(statonly)
-                    brazil_band_surfaces.back().FillSurfaceStat(config, param, "");
+                    brazil_band_surfaces.back().FillSurfaceStat(config, fitconfig, "");
                 else
-                    brazil_band_surfaces.back().FillSurface(param, "", myseed, nthread);
+                    brazil_band_surfaces.back().FillSurface(fitconfig, "", myseed, nthread);
 
                 TH2D surf("surf", (";"+xlabel+";"+ylabel).c_str(), surface.nbinsx, binedges_x.data(), surface.nbinsy, binedges_y.data());
 
@@ -1223,7 +1238,8 @@ int main(int argc, char* argv[])
         for(size_t i = 0; i < nthread; i++) {
             dchi2s.emplace_back();
             outs.emplace_back();
-            fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, systs, chi2, pparams, llt.matrixL(), param, (*myseed.getThreadSeeds())[i], (int)i, !eventbyevent};
+            fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, systs, chi2, pparams, llt.matrixL(), fitconfig,(*myseed.getThreadSeeds())[i], (int)i, !eventbyevent};
+
             threads.emplace_back(fc_worker, args);
         }
         for(auto&& t: threads) {
