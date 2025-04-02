@@ -81,14 +81,17 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     //Sort so we can take the best N_localfits for further zoning with a PSO
     std::vector<int> best_multistart = sorted_indices(chi2s_multistart);    
 
-    log<LOG_DEBUG>(L"%1% || Best Point is  : %2% ") % __func__ % latin_samples[best_multistart[0]];
+    log<LOG_INFO>(L"%1% || Best Point after latin hypercube has chi^2 %2% with pts  : %3% ") % __func__ % chi2s_multistart[best_multistart[0]] % latin_samples[best_multistart[0]];
 
+    std::string swarm_string = "";
     std::vector<std::vector<float>> swarm_start_points;
     int niter=0;
     float fx;
     for(int s = 0; s < n_swarm_particles; s++){
+        swarm_string += " " + std::to_string(chi2s_multistart[best_multistart[s]]);
         swarm_start_points.push_back(latin_samples[best_multistart[s]]);
     }
+    log<LOG_INFO>(L"%1% || This along with %2% swarm points chis of %3% ") % __func__ % n_swarm_particles % swarm_string.c_str();
 
     PROswarm PSO(metric, rng, swarm_start_points, lb, ub , n_swarm_iterations);
     PSO.runSwarm(metric, rng);
