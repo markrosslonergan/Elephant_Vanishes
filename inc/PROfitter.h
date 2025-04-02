@@ -10,7 +10,7 @@ namespace PROfit {
 
     struct PROfitterConfig {
         LBFGSpp::LBFGSBParam<float> param;
-        int n_multistart = 2000, n_swarm_particles = 20, n_swarm_iterations=100, int n_localfit=1;
+        int n_multistart = 2000, n_swarm_particles = 20, n_swarm_iterations=100, n_localfit=1;
         size_t n_max_local_retries = 3;
 
         void print(){

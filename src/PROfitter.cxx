@@ -88,14 +88,14 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     std::vector<std::vector<float>> swarm_start_points;
     int niter=0;
     float fx;
-    for(int s = 0; s < n_swarm_particles; s++){
+    for(int s = 0; s < fitconfig.n_swarm_particles; s++){
         swarm_string += " " + std::to_string(chi2s_multistart[best_multistart[s]]);
         swarm_start_points.push_back(latin_samples[best_multistart[s]]);
     }
-    log<LOG_INFO>(L"%1% || This along with %2% swarm points chis of %3% ") % __func__ % n_swarm_particles % swarm_string.c_str();
+    log<LOG_INFO>(L"%1% || This along with %2% swarm points chis of %3% ") % __func__ % fitconfig.n_swarm_particles % swarm_string.c_str();
 
 
-    PROswarm PSO(metric, rng, swarm_start_points, lb, ub , n_swarm_iterations);
+    PROswarm PSO(metric, rng, swarm_start_points, lb, ub , fitconfig.n_swarm_iterations);
     PSO.runSwarm(metric, rng);
    
     
@@ -109,9 +109,9 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
     x = PSO.getGlobalBestPosition();
 
-    for (size_t attempt = 1; attempt <= n_max_local_retries; ++attempt) {
+    for (size_t attempt = 1; attempt <= fitconfig.n_max_local_retries; ++attempt) {
         try {
-            log<LOG_INFO>(L"%1% || Starting local minimization attempt %2%/%3%") % __func__ % attempt % n_max_local_retries;
+            log<LOG_INFO>(L"%1% || Starting local minimization attempt %2%/%3%") % __func__ % attempt % fitconfig.n_max_local_retries;
             niter = solver.minimize(metric, x, fx, lb, ub);
             chi2s_localfits.push_back(fx);
 
@@ -130,7 +130,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
             break;
 
         } catch (const std::runtime_error &except) {
-            log<LOG_WARNING>(L"%1% || Minimization attempt %2%/%3% failed: %4%") % __func__ % attempt % n_max_local_retries % except.what();
+            log<LOG_WARNING>(L"%1% || Minimization attempt %2%/%3% failed: %4%") % __func__ % attempt % fitconfig.n_max_local_retries % except.what();
         }
     }
 
