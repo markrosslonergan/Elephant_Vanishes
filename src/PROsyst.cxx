@@ -1,10 +1,12 @@
 #include "PROsyst.h"
 #include "CLI11.h"
+#include "PROcess.h"
 #include "PROpeller.h"
 #include "PROconfig.h"
 #include "PROcreate.h"
 #include "PROlog.h"
 #include "PROtocall.h"
+#include <Eigen/src/Core/Matrix.h>
 
 namespace PROfit {
 
@@ -38,12 +40,12 @@ namespace PROfit {
         fractional_covariance = this->SumMatrices();
     }
 
-    PROsyst PROsyst::subset(const std::vector<std::string> &systs) {
+    PROsyst PROsyst::subset(const std::vector<std::string> &systs) const {
         PROsyst ret;
         log<LOG_DEBUG>(L"%1% | Creating a subset with a list of %2% systematics.") % __func__ % systs.size();
         for(const std::string &name: systs) {
             log<LOG_DEBUG>(L"%1% | Looking up systematic %2% from subset list.") % __func__ % name.c_str();
-            const auto &[idx, stype] = syst_map[name];
+            const auto &[idx, stype] = syst_map.at(name);
             switch(stype) {
             case SystType::Spline:
                 ret.syst_map[name] = std::make_pair(ret.splines.size(), SystType::Spline);
@@ -69,7 +71,7 @@ namespace PROfit {
         return ret;
     }
 
-    PROsyst PROsyst::excluding(const std::vector<std::string> &systs) {
+    PROsyst PROsyst::excluding(const std::vector<std::string> &systs) const {
         PROsyst ret;
         for(const auto &[name, spair]: syst_map) {
             if(std::find(systs.begin(), systs.end(), name) != systs.end()) continue;
@@ -97,6 +99,64 @@ namespace PROfit {
             : Eigen::MatrixXf::Constant(fractional_covariance.rows(), fractional_covariance.cols(), 0.0f);
         ret.other_index = other_index;
         return ret;
+    }
+    
+    PROsyst PROsyst::allsplines2cov(const PROconfig &config, const PROpeller &prop, uint32_t seed) const {
+        PROsyst ret;
+        for(const auto &[name, spair]: syst_map) {
+            const auto &[idx, stype] = spair;
+            switch(stype) {
+            case SystType::Spline: {
+                ret.syst_map[name] = std::make_pair(ret.covmat.size(), SystType::Covariance);
+                ret.covar_names.push_back(name);
+                Eigen::MatrixXf cov = spline2cov(idx, config, prop, seed);
+                Eigen::MatrixXf cor = GenerateCorrMatrix(cov);
+                ret.covmat.push_back(cov);
+                ret.corrmat.push_back(cor);
+                } break;
+            case SystType::Covariance:
+                ret.syst_map[name] = std::make_pair(ret.covmat.size(), SystType::Covariance);
+                ret.covar_names.push_back(name);
+                ret.covmat.push_back(covmat[idx]);
+                ret.corrmat.push_back(corrmat[idx]);
+                break;
+            default:
+                log<LOG_ERROR>(L"%1% || Unrecognized syst type %2% for syst %3%.") % __func__ % static_cast<int>(stype) % name.c_str();
+                break;
+            }
+        }
+        ret.fractional_covariance = ret.covmat.size() ? ret.SumMatrices()
+            : Eigen::MatrixXf::Constant(fractional_covariance.rows(), fractional_covariance.cols(), 0.0f);
+        ret.other_index = other_index;
+        return ret;
+    }
+
+    Eigen::MatrixXf PROsyst::spline2cov(int spline, const PROconfig &config, const PROpeller &prop, uint32_t seed) const {
+        Eigen::VectorXf cv = other_index < 0 ? FillCVSpectrum(config, prop, true).Spec()
+            : FillOtherCVSpectrum(config, prop, other_index).Spec();
+
+        std::vector<Eigen::VectorXf> specs;
+        for(size_t i = 0; i < 1000; ++i){
+            specs.push_back(FillSplineRandomThrow(config, prop, *this, spline, seed, other_index).Spec());
+        }
+
+        int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        Eigen::MatrixXf mat(nbins, nbins);
+        mat.setZero();
+        for(const auto &spec: specs){
+            for(int i = 0; i < cv.size(); ++i){
+                for(int j = 0; j < cv.size(); ++j){
+                    mat(i, j) += (cv(i)-spec(i))*(cv(j)-spec(j));
+                }
+            }
+        }
+        mat /= specs.size();
+
+        Eigen::MatrixXf cv_inverse = cv.asDiagonal().inverse();
+        Eigen::MatrixXf frac_covar_matrix = cv_inverse * mat * cv_inverse;
+        PROsyst::toFiniteMatrix(frac_covar_matrix);
+
+        return frac_covar_matrix;
     }
 
     Eigen::MatrixXf PROsyst::SumMatrices() const{
