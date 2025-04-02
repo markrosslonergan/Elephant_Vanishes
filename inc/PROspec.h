@@ -79,8 +79,8 @@ namespace PROfit{
 
 
             /* Function: given subchannel name/index, generate TH1D histogram of corresponding spectrum */
-            TH1D toTH1D(const PROconfig& inconfig, int subchannel_index) const;
-            TH1D toTH1D(const PROconfig& inconfig, const std::string& subchannel_fullname) const;
+            TH1D toTH1D(const PROconfig& inconfig, int subchannel_index, int other_index = -1) const;
+            TH1D toTH1D(const PROconfig& inconfig, const std::string& subchannel_fullname, int other_index = -1) const;
 
             TH1D toTH1D_Collapsed(const PROconfig& inconfig, int channel_index) const;
 

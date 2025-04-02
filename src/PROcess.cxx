@@ -29,6 +29,16 @@ namespace PROfit {
         return myspectrum;
     }
 
+    PROspec FillOtherCVSpectrum(const PROconfig &inconfig, const PROpeller &inprop, size_t other_index){
+        PROspec myspectrum(inconfig.m_num_other_bins_total[other_index]);
+        for(size_t i = 0; i<inprop.trueLE.size(); ++i){
+            float add_w = inprop.added_weights[i]; 
+            if(inprop.other_bin_indices[i][other_index] >= 0)
+                myspectrum.Fill(inprop.other_bin_indices[i][other_index], add_w);
+        }
+        return myspectrum;
+    }
+
     PROspec FillRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, const PROmodel &inmodel, const Eigen::VectorXf &params, bool binned){
         PROspec myspectrum(inconfig.m_num_bins_total);
         Eigen::VectorXf phys   = params.segment(0, inmodel.nparams);
@@ -63,6 +73,29 @@ namespace PROfit {
 
                 myspectrum.Fill(inprop.bin_indices[i], finalw);
             }
+        }
+        return myspectrum;
+    }
+
+    PROspec FillOtherRecoSpectra(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, const PROmodel &inmodel, const Eigen::VectorXf &params, size_t other_index){
+        PROspec myspectrum(inconfig.m_num_other_bins_total[other_index]);
+        Eigen::VectorXf phys   = params.segment(0, inmodel.nparams);
+        Eigen::VectorXf shifts = params.segment(inmodel.nparams, params.size() - inmodel.nparams);
+
+        for(size_t i = 0; i<inprop.trueLE.size(); ++i){
+            float oscw  =  inmodel.model_functions[inprop.model_rule[i]](phys, inprop.trueLE[i]);
+            float add_w = inprop.added_weights[i]; 
+            const int true_bin = inprop.true_bin_indices[i]; 
+
+            float systw = 1;
+            for(int j = 0; j < shifts.size(); ++j) {
+                systw *= insyst.GetSplineShift(j, shifts(j), true_bin);
+            }
+
+            float finalw = oscw * systw * add_w;
+
+            if(inprop.other_bin_indices[i][other_index] >= 0)
+                myspectrum.Fill(inprop.other_bin_indices[i][other_index], finalw);
         }
         return myspectrum;
     }
@@ -133,65 +166,59 @@ namespace PROfit {
         return myspectrum;
     }
 
-    PROspec FillSystRandomThrow(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, uint32_t seed) {
-        Eigen::VectorXf spec = Eigen::VectorXf::Constant(inconfig.m_num_bins_total, 0);
-        Eigen::VectorXf cvspec = Eigen::VectorXf::Constant(inconfig.m_num_bins_total, 0);
+    PROspec FillSystRandomThrow(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, uint32_t seed, int other_index) {
+        int nbins = other_index < 0 ? inconfig.m_num_bins_total : inconfig.m_num_other_bins_total[other_index],
+            nbins_collapsed = other_index < 0 ? inconfig.m_num_bins_total_collapsed : inconfig.m_num_other_bins_total_collapsed[other_index];
+        Eigen::VectorXf spec = Eigen::VectorXf::Constant(nbins, 0);
+        Eigen::VectorXf cvspec = Eigen::VectorXf::Constant(nbins, 0);
 
         // TODO: We should think about centralizing rng in a thread-safe/thread-aware way
         static std::mt19937 rng{seed};
         std::normal_distribution<float> d;
         std::vector<float> throws;
         //Eigen::VectorXf throwC = Eigen::VectorXf::Constant(inconfig.m_num_bins_total, 0);
-        Eigen::VectorXf throwC = Eigen::VectorXf::Constant(inconfig.m_num_bins_total_collapsed, 0);
+        Eigen::VectorXf throwC = Eigen::VectorXf::Constant(nbins_collapsed, 0);
         for(size_t i = 0; i < insyst.GetNSplines(); i++)
             throws.push_back(d(rng));
-        for(size_t i = 0; i < inconfig.m_num_bins_total_collapsed; i++)
+        for(int i = 0; i < nbins_collapsed; i++)
             throwC(i) = d(rng);
 
 
-        for(long int i = 0; i < inprop.hist.rows(); ++i) {
-            float systw = 1;
-            for(size_t j = 0; j < throws.size(); ++j) {
-                systw *= insyst.GetSplineShift(j, throws[j], i);
+        if(other_index < 0) {
+            for(long int i = 0; i < inprop.hist.rows(); ++i) {
+                float systw = 1;
+                for(size_t j = 0; j < throws.size(); ++j) {
+                    systw *= insyst.GetSplineShift(j, throws[j], i);
+                }
+                for(int k = 0; k < nbins; ++k) {
+                    spec(k) += systw * inprop.hist(i, k);
+                    cvspec(k) += inprop.hist(i, k);
+                }
             }
-            for(size_t k = 0; k < inconfig.m_num_bins_total; ++k) {
-                spec(k) += systw * inprop.hist(i, k);
-                cvspec(k) += inprop.hist(i, k);
+        } else {
+            for(size_t i = 0; i<inprop.trueLE.size(); ++i){
+                float add_w = inprop.added_weights[i]; 
+                const int true_bin = inprop.true_bin_indices[i]; 
+                float systw = 1;
+                for(size_t j = 0; j < throws.size(); ++j) {
+                    systw *= insyst.GetSplineShift(j, throws[j], true_bin);
+                }
+                float finalw = systw * add_w;
+                if(inprop.other_bin_indices[i][other_index] >= 0) {
+                    spec(inprop.other_bin_indices[i][other_index]) += finalw;
+                    cvspec(inprop.other_bin_indices[i][other_index]) += add_w;
+                }
             }
         }
 
         if(insyst.GetNCovar() == 0) {
-            Eigen::VectorXf final_spec = CollapseMatrix(inconfig, spec);
+            Eigen::VectorXf final_spec = other_index < 0 ? CollapseMatrix(inconfig, spec) : CollapseMatrix(inconfig, spec, other_index);
             return PROspec(final_spec, final_spec.array().sqrt());
         }
 
-        // TODO: We probably just want to do this once and save it somewhere.
-        // But where? PROpeller doesn't know about systs and PROsyst doesn't
-        // know about cvspec.
-        Eigen::MatrixXf diag = cvspec.asDiagonal();
-        Eigen::MatrixXf full_cov = diag * insyst.fractional_covariance * diag;
-        Eigen::MatrixXf coll = CollapseMatrix(inconfig, full_cov);
-        Eigen::LDLT<Eigen::MatrixXf> ldlt(coll);
-        Eigen::MatrixXf L = ldlt.matrixL(); 
-        Eigen::VectorXf D_sqrt = ldlt.vectorD().array().sqrt();  
-        Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> P(ldlt.transpositionsP());
-
-        if (ldlt.info() != Eigen::Success) {
-            log<LOG_ERROR>(L"%1% | Eigen LLT has failed!") % __func__ ;
-            if (!coll.isApprox(coll.transpose())) {
-                log<LOG_ERROR>(L"%1% | Matrix is not symmetric!") % __func__ ;
-            }
-            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> eigensolver(coll);
-            if (eigensolver.eigenvalues().minCoeff() <= 0) {
-                log<LOG_ERROR>(L"%1% | Matrix is not positive semi definite, minCoeff is %2% ") % __func__ % eigensolver.eigenvalues().minCoeff();
-            }
-            Eigen::IOFormat fmt(Eigen::StreamPrecision, Eigen::DontAlignCols, " ", "\n", "", "", "", "");
-            std::ostringstream oss;
-            oss << coll.format(fmt);
-            log<LOG_ERROR>(L"%1% | Matrix is %2% ") % __func__ % oss.str().c_str();
-            exit(EXIT_FAILURE);
-        }
-        Eigen::VectorXf final_spec = CollapseMatrix(inconfig, spec) + P*L*D_sqrt.asDiagonal() * throwC;
+        Eigen::MatrixXf decomp_cov = insyst.DecomposeFractionalCovariance(inconfig, cvspec);
+        Eigen::VectorXf collapsed_spec = other_index < 0 ? CollapseMatrix(inconfig, spec) : CollapseMatrix(inconfig, spec, other_index);
+        Eigen::VectorXf final_spec = collapsed_spec + decomp_cov * throwC;
 
         //std::vector<float> stdVec(final_spec.data(), final_spec.data() + final_spec.size());
         //log<LOG_INFO>(L"%1% | final_spec is %2% ") % __func__ % stdVec;

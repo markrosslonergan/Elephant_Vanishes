@@ -1,14 +1,16 @@
 #include "PROsyst.h"
+#include "CLI11.h"
 #include "PROpeller.h"
 #include "PROconfig.h"
 #include "PROcreate.h"
 #include "PROlog.h"
+#include "PROtocall.h"
 
 namespace PROfit {
 
     bool PROsyst::shape_only = false;
 
-    PROsyst::PROsyst( const PROpeller &prop, const PROconfig &config, const std::vector<SystStruct>& systs, bool shapeonly) {
+    PROsyst::PROsyst( const PROpeller &prop, const PROconfig &config, const std::vector<SystStruct>& systs, bool shapeonly, int other_index) : other_index(other_index) {
         shape_only = shapeonly;
         for(const auto& syst: systs) {
             log<LOG_DEBUG>(L"%1% || syst mode: %2%") % __func__ % syst.mode.c_str();
@@ -25,7 +27,8 @@ namespace PROfit {
                 covar_names.push_back(syst.systname); 
             }
         }
-        Eigen::MatrixXf fractional_mcstat_cov = prop.mcStatErr.array().square().inverse().matrix().asDiagonal();
+        Eigen::MatrixXf fractional_mcstat_cov = other_index < 0 ? prop.mcStatErr.array().square().inverse().matrix().asDiagonal()
+                                                                : prop.otherMCStatErr[other_index].array().square().inverse().matrix().asDiagonal();
         toFiniteMatrix(fractional_mcstat_cov);
         Eigen::MatrixXf mcstat_corr = GenerateCorrMatrix(fractional_mcstat_cov);
         syst_map["mcstat"] = {covmat.size(), SystType::Covariance};
@@ -62,6 +65,7 @@ namespace PROfit {
         }
         ret.fractional_covariance = ret.covmat.size() ? ret.SumMatrices()
             : Eigen::MatrixXf::Constant(fractional_covariance.rows(), fractional_covariance.cols(), 0.0f);
+        ret.other_index = other_index;
         return ret;
     }
 
@@ -91,6 +95,7 @@ namespace PROfit {
         }
         ret.fractional_covariance = ret.covmat.size() ? ret.SumMatrices()
             : Eigen::MatrixXf::Constant(fractional_covariance.rows(), fractional_covariance.cols(), 0.0f);
+        ret.other_index = other_index;
         return ret;
     }
 
@@ -158,8 +163,9 @@ namespace PROfit {
     void PROsyst::CreateFlatMatrix(const PROconfig &config, const SystStruct& syst){
         std::string sysname = syst.GetSysName();
         log<LOG_INFO>(L"%1% || Generating a FLAT norm covariance matrix.") % __func__ ;
-        Eigen::MatrixXf fracM = Eigen::MatrixXf::Zero(config.m_num_bins_total, config.m_num_bins_total);
-        Eigen::MatrixXf corrM = Eigen::MatrixXf::Identity(config.m_num_bins_total, config.m_num_bins_total);
+        int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        Eigen::MatrixXf fracM = Eigen::MatrixXf::Zero(nbins, nbins);
+        Eigen::MatrixXf corrM = Eigen::MatrixXf::Identity(nbins, nbins);
 
         size_t colonPos = sysname.find(':');
         if (colonPos == std::string::npos) {
@@ -186,10 +192,18 @@ namespace PROfit {
             size_t is = config.GetSubchannelIndex(name);     
             size_t ic = config.GetChannelIndex(is);     
 
-            size_t start = config.GetGlobalBinStart(is); 
-            for(size_t b = 0; b < config.m_channel_num_bins[ic] ; b++){
-                fracM(start+b,start+b)=flat_percent*flat_percent;
-                flatbins.push_back(start+b);
+            if(other_index < 0) {
+                size_t start = config.GetGlobalBinStart(is); 
+                for(size_t b = 0; b < config.m_channel_num_bins[ic] ; b++){
+                    fracM(start+b,start+b)=flat_percent*flat_percent;
+                    flatbins.push_back(start+b);
+                }
+            } else {
+                size_t start = config.GetGlobalOtherBinStart(is, other_index);
+                for(size_t b = 0; b < config.m_channel_num_other_bins[ic][other_index] ; b++){
+                    fracM(start+b,start+b)=flat_percent*flat_percent;
+                    flatbins.push_back(start+b);
+                }
             }
         }
         log<LOG_INFO>(L"%1% || and fills bins  %2%  .") % __func__  %  flatbins;
@@ -409,7 +423,7 @@ namespace PROfit {
                 {-2,  2, -1},
                 { 1,  0,  0}};
             const Eigen::Vector3f res = m * v;
-            spline.push_back({syst.knobval[0], {res(2), res(1), res(0), 0}});
+            spline.push_back({(float)syst.knobval[0], {res(2), res(1), res(0), 0}});
 
             for(unsigned int shiftIdx = 1; shiftIdx < ratios.size()-2; ++shiftIdx){
                 const float y0 = ratios[shiftIdx-1].GetBinContent(i);
@@ -436,7 +450,7 @@ namespace PROfit {
                 { 0,  0,  1},
                 { 1,  0,  0}};
             const Eigen::Vector3f resp = mp * vp;
-            spline.push_back({syst.knobval[syst.knobval.size() - 2], {resp(2), resp(1), resp(0), 0}});
+            spline.push_back({(float)syst.knobval[syst.knobval.size() - 2], {resp(2), resp(1), resp(0), 0}});
 
             spline_coeffs.push_back(spline);
         }
@@ -462,61 +476,71 @@ namespace PROfit {
     }
 
     PROspec PROsyst::GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::string name, float shift) const {
-        PROspec ret(config.m_num_bins_total);
+        int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        PROspec ret(nbins);
         for(size_t i = 0; i < prop.trueLE.size(); ++i) {
             const int true_bin = prop.true_bin_indices[i];
-            ret.Fill(prop.bin_indices[i], GetSplineShift(name, shift, true_bin) * prop.added_weights[i]);
+            const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
+            ret.Fill(reco_bin, GetSplineShift(name, shift, true_bin) * prop.added_weights[i]);
         }
         return ret;
     }
 
     PROspec PROsyst::GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, int syst_num, float shift) const {
-        PROspec ret(config.m_num_bins_total);
+        int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        PROspec ret(nbins);
         for(size_t i = 0; i < prop.trueLE.size(); ++i) {
             const int true_bin = prop.true_bin_indices[i];
-            ret.Fill(prop.bin_indices[i], GetSplineShift(syst_num, shift, true_bin) * prop.added_weights[i]);
+            const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
+            ret.Fill(reco_bin, GetSplineShift(syst_num, shift, true_bin) * prop.added_weights[i]);
         }
         return ret;
     }
 
     PROspec PROsyst::GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::vector<std::string> names, std::vector<float> shifts) const {
         assert(names.size() == shifts.size());
-        PROspec ret(config.m_num_bins_total);
+        int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        PROspec ret(nbins);
         for(size_t i = 0; i < prop.trueLE.size(); ++i) {
             const int true_bin = prop.true_bin_indices[i];
+            const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
             float weight = 1;
             for(size_t j = 0; j < names.size(); ++j) {
                 weight *= GetSplineShift(names[j], shifts[j], true_bin);
             }
-            ret.Fill(prop.bin_indices[i], weight * prop.added_weights[i]);
+            ret.Fill(reco_bin, weight * prop.added_weights[i]);
         }
         return ret;
     }
 
     PROspec PROsyst::GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::vector<int> syst_nums, std::vector<float> shifts) const {
         assert(syst_nums.size() == shifts.size());
-        PROspec ret(config.m_num_bins_total);
+        int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        PROspec ret(nbins);
         for(size_t i = 0; i < prop.trueLE.size(); ++i) {
             const int true_bin = prop.true_bin_indices[i];
+            const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
             float weight = 1;
             for(size_t j = 0; j < syst_nums.size(); ++j) {
                 weight *= GetSplineShift(syst_nums[j], shifts[j], true_bin);
             }
-            ret.Fill(prop.bin_indices[i], weight * prop.added_weights[i]);
+            ret.Fill(reco_bin, weight * prop.added_weights[i]);
         }
         return ret;
     }
 
     PROspec PROsyst::GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::vector<float> shifts) const {
         assert(shifts.size() == splines.size());
-        PROspec ret(config.m_num_bins_total);
+        int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        PROspec ret(nbins);
         for(size_t i = 0; i < prop.trueLE.size(); ++i) {
             const int true_bin = prop.true_bin_indices[i];
+            const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
             float weight = 1;
             for(size_t j = 0; j < shifts.size(); ++j) {
                 weight *= GetSplineShift(j, shifts[j], true_bin);
             }
-            ret.Fill(prop.bin_indices[i], weight * prop.added_weights[i]);
+            ret.Fill(reco_bin, weight * prop.added_weights[i]);
         }
         return ret;
     }
@@ -557,7 +581,7 @@ namespace PROfit {
     Eigen::MatrixXf PROsyst::DecomposeFractionalCovariance(const PROconfig &config, const Eigen::VectorXf &cv_vec) const {
         Eigen::MatrixXf diag = cv_vec.asDiagonal();
         Eigen::MatrixXf full_cov = diag * fractional_covariance * diag;
-        Eigen::MatrixXf coll = CollapseMatrix(config, full_cov);
+        Eigen::MatrixXf coll = other_index < 0 ? CollapseMatrix(config, full_cov) : CollapseMatrix(config, full_cov, other_index);
         Eigen::LDLT<Eigen::MatrixXf> ldlt(coll);
         Eigen::MatrixXf L = ldlt.matrixL(); 
         Eigen::VectorXf D_sqrt = ldlt.vectorD().array().sqrt();  
