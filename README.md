@@ -1,8 +1,7 @@
 
 <p align="center">
-<img src="/other/profit.png" width="350">
+<img src="/other/PRofit_mono.png" width="350">
 </p>
-<h1 align="center">PROfit</h1>
 <h1 align="center">A PROfessional, PROductive, PROficient and PROfound optimization and oscillations fitting framework.</h1>
 
 
