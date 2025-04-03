@@ -520,6 +520,8 @@ int main(int argc, char* argv[])
     std::mt19937 main_rng(main_seed);
     std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
     
+    PROsyst allcovsyst = systs.allsplines2cov(config, prop, dseed(main_rng));
+
     //Some global minimizer params
     PROfitterConfig fitconfig;
     fitconfig.param.epsilon = 1e-6;
@@ -1026,7 +1028,9 @@ int main(int argc, char* argv[])
         //
         //TODO: Multiple channels
         int global_channel_index = 0;
-        double chival = metric->getSingleChannelChi(global_channel_index);
+        std::unique_ptr<PROmetric> allcov_metric(metric->Clone());
+        allcov_metric->override_systs(allcovsyst);
+        double chival = allcov_metric->getSingleChannelChi(global_channel_index);
         log<LOG_INFO>(L"%1% || On channel %2% the datamc chi^2/ndof is %3%/%4% .") % __func__ % global_channel_index % chival % config.m_channel_num_bins[global_channel_index];
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
         chi2text.AddText(("#chi^{2}/ndf = "+to_string_prec(chival,2)+"/"+std::to_string(config.m_channel_num_bins[global_channel_index])).c_str());

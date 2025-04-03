@@ -226,4 +226,35 @@ namespace PROfit {
 
         return PROspec(final_spec, final_spec.array().sqrt());
     }
+
+    PROspec FillSplineRandomThrow(const PROconfig &inconfig, const PROpeller &inprop, const PROsyst &insyst, int spline, uint32_t seed, int other_index) {
+        int nbins = other_index < 0 ? inconfig.m_num_bins_total : inconfig.m_num_other_bins_total[other_index];
+        Eigen::VectorXf spec = Eigen::VectorXf::Constant(nbins, 0);
+
+        // TODO: We should think about centralizing rng in a thread-safe/thread-aware way
+        static std::mt19937 rng{seed};
+        std::normal_distribution<float> d;
+        float spline_throw = d(rng);
+
+        if(other_index < 0) {
+            for(long int i = 0; i < inprop.hist.rows(); ++i) {
+                float systw = insyst.GetSplineShift(spline, spline_throw, i);
+                for(int k = 0; k < nbins; ++k) {
+                    spec(k) += systw * inprop.hist(i, k);
+                }
+            }
+        } else {
+            for(size_t i = 0; i<inprop.trueLE.size(); ++i){
+                float add_w = inprop.added_weights[i]; 
+                const int true_bin = inprop.true_bin_indices[i]; 
+                float systw = insyst.GetSplineShift(spline, spline_throw, true_bin);
+                float finalw = systw * add_w;
+                if(inprop.other_bin_indices[i][other_index] >= 0) {
+                    spec(inprop.other_bin_indices[i][other_index]) += finalw;
+                }
+            }
+        }
+
+        return PROspec(spec, spec.array().sqrt());
+    }
 };
