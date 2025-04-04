@@ -159,8 +159,8 @@ void fc_worker(fc_args args) {
 std::map<std::string, std::unique_ptr<TH1D>> getCVHists(const PROspec & spec, const PROconfig& inconfig, bool scale = false, int other_index = -1);
 std::map<std::string, std::unique_ptr<TH2D>> covarianceTH2D(const PROsyst &syst, const PROconfig &config, const PROspec &cv);
 std::map<std::string, std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>>> getSplineGraphs(const PROsyst &systs, const PROconfig &config);
-std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, uint32_t seed, bool scale = false, int other_index = -1);
-std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, uint32_t seed, bool scale = false);
+std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, bool scale = false, int other_index = -1);
+std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, bool scale = false);
 
 enum class PlotOptions {
     Default = 0,
@@ -516,11 +516,9 @@ int main(int argc, char* argv[])
 
     //Seed time
     PROseed myseed(nthread, global_seed);
-    uint32_t main_seed = (*myseed.getThreadSeeds())[0];
-    std::mt19937 main_rng(main_seed);
     std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
     
-    PROsyst allcovsyst = systs.allsplines2cov(config, prop, dseed(main_rng));
+    PROsyst allcovsyst = systs.allsplines2cov(config, prop, dseed(PROseed::global_rng));
 
     //Some global minimizer params
     PROfitterConfig fitconfig;
@@ -651,8 +649,8 @@ int main(int argc, char* argv[])
             pre_hist.SetBinContent(i+1, cv.Spec()(i));
         }
         std::vector<TH1D> posteriors;
-        std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs, dseed(main_rng));
-        std::unique_ptr<TGraphAsymmErrors> post_err_band = getPostFitErrorBand(config, prop, *metric_to_use, best_fit, posteriors, dseed(main_rng));
+        std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs, binwidth_scale);
+        std::unique_ptr<TGraphAsymmErrors> post_err_band = getPostFitErrorBand(config, prop, *metric_to_use, best_fit, posteriors, binwidth_scale);
         
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
         chi2text.AddText(hname.c_str());
@@ -789,7 +787,6 @@ int main(int argc, char* argv[])
 
         std::vector<PROsurf> brazil_band_surfaces;
         if(run_brazil && brazil_throws.size() == 0) {
-            std::mt19937 rng(dseed(main_rng));
             std::normal_distribution<float> d;
             size_t nphys = metric->GetModel().nparams;
             PROspec cv = FillCVSpectrum(config, prop, true);
@@ -799,9 +796,9 @@ int main(int argc, char* argv[])
                 Eigen::VectorXf throwp = pparams;
                 Eigen::VectorXf throwC = Eigen::VectorXf::Constant(config.m_num_bins_total_collapsed, 0);
                 for(size_t i = 0; i < metric->GetSysts().GetNSplines(); i++)
-                    throwp(i+nphys) = d(rng);
+                    throwp(i+nphys) = d(PROseed::global_rng);
                 for(size_t i = 0; i < config.m_num_bins_total_collapsed; i++)
-                    throwC(i) = d(rng);
+                    throwC(i) = d(PROseed::global_rng);
                 PROspec shifted = FillRecoSpectra(config, prop, metric->GetSysts(), metric->GetModel(), throwp, eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
                 PROspec newSpec = statonly_brazil ? PROspec::PoissonVariation(collapsed_cv) :
                     PROspec::PoissonVariation(PROspec(CollapseMatrix(config, shifted.Spec()) + L * throwC, CollapseMatrix(config, shifted.Error())));
@@ -1037,11 +1034,11 @@ int main(int argc, char* argv[])
         chi2text.SetFillColor(0);
         chi2text.SetBorderSize(0);
         chi2text.SetTextAlign(12);
-        std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs,  dseed(main_rng),binwidth_scale);
+        std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs, binwidth_scale);
         plot_channels(final_output_tag+"_PROplot_ErrorBand.pdf", config, spec, {}, data, err_band.get(), {}, &chi2text, opt);
         std::vector<std::unique_ptr<TGraphAsymmErrors>> other_err_bands;
         for(size_t io = 0; io < config.m_num_other_vars; ++io) {
-            other_err_bands.push_back(getErrorBand(config, prop, other_systs[io],  dseed(main_rng),binwidth_scale, io));
+            other_err_bands.push_back(getErrorBand(config, prop, other_systs[io], binwidth_scale, io));
             plot_channels(final_output_tag+"_PROplot_other_"+std::to_string(io)+"_ErrorBand.pdf", config, other_cvs[io], {}, other_data[io], 
                     other_err_bands.back().get(), {}, NULL, opt, io);
         }
@@ -1435,7 +1432,7 @@ getSplineGraphs(const PROsyst &systs, const PROconfig &config) {
     return spline_graphs;
 }
 
-std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, uint32_t seed, bool scale, int other_index) {
+std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, bool scale, int other_index) {
     //TODO: Only works with 1 mode/detector/channel
     Eigen::VectorXf cv = other_index < 0 ? CollapseMatrix(config, FillCVSpectrum(config, prop, true).Spec()) :
         CollapseMatrix(config, FillOtherCVSpectrum(config, prop, other_index).Spec(), other_index);
@@ -1447,10 +1444,9 @@ std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const P
     for(size_t i = 0; i < edges.size() - 1; ++i)
         centers.push_back((edges[i+1] + edges[i])/2);
     std::vector<Eigen::VectorXf> specs;
-    std::mt19937 rng(seed);
     std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
     for(size_t i = 0; i < nerrorsample; ++i)
-        specs.push_back(FillSystRandomThrow(config, prop, syst, dseed(rng), other_index).Spec());
+        specs.push_back(FillSystRandomThrow(config, prop, syst, dseed(PROseed::global_rng), other_index).Spec());
     //specs.push_back(CollapseMatrix(config, FillSystRandomThrow(config, prop, syst).Spec()));
     TH1D tmphist("th", "", cv.size(), edges.data());
     for(int i = 0; i < cv.size(); ++i)
@@ -1476,15 +1472,14 @@ std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const P
     return ret;
 }
 
-std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, uint32_t seed, bool scale) {
+std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, bool scale) {
     // Fix physics parameters
     std::vector<int> fixed_pars;
     for(size_t i = 0; i < metric.GetModel().nparams; ++i) fixed_pars.push_back(i);
 
-    std::mt19937 rng(seed);
     std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
 
-    Metropolis mh(simple_target{metric}, simple_proposal(metric, dseed(rng), 0.2, fixed_pars), best_fit, dseed(rng));
+    Metropolis mh(simple_target{metric}, simple_proposal(metric, dseed(PROseed::global_rng), 0.2, fixed_pars), best_fit, dseed(PROseed::global_rng));
 
     for(size_t i = 0; i < metric.GetSysts().GetNSplines(); ++i)
         posteriors.emplace_back("", (";"+config.m_mcgen_variation_plotname_map.at(metric.GetSysts().spline_names[i])).c_str(), 60, -3, 3);
@@ -1498,7 +1493,7 @@ std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, 
     const auto action = [&](const Eigen::VectorXf &value) {
         int nphys = metric.GetModel().nparams;
         for(size_t i = 0; i < config.m_num_bins_total_collapsed; ++i)
-            throws(i) = nd(rng);
+            throws(i) = nd(PROseed::global_rng);
         specs.push_back(CollapseMatrix(config, FillRecoSpectra(config, prop, metric.GetSysts(), metric.GetModel(), value, true).Spec())+L*throws);
         for(size_t i = 0; i < metric.GetSysts().GetNSplines(); ++i)
             posteriors[i].Fill(value(i+nphys));
