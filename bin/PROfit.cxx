@@ -1522,19 +1522,21 @@ std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, 
     Eigen::VectorXf throws = Eigen::VectorXf::Constant(config.m_num_bins_total_collapsed, 0);
 
     int nspline = metric.GetSysts().GetNSplines();
+    int nphys = metric.GetModel().nparams;
+    Eigen::VectorXf splines_bf = best_fit.segment(nphys, nspline);
     post_covar = Eigen::MatrixXf::Constant(nspline, nspline, 0);
     size_t accepted = 0;
     std::vector<Eigen::VectorXf> specs;
     const auto action = [&](const Eigen::VectorXf &value) {
         accepted += 1;
-        int nphys = metric.GetModel().nparams;
         for(size_t i = 0; i < config.m_num_bins_total_collapsed; ++i)
             throws(i) = nd(PROseed::global_rng);
         specs.push_back(CollapseMatrix(config, FillRecoSpectra(config, prop, metric.GetSysts(), metric.GetModel(), value, true).Spec())+L*throws);
         for(size_t i = 0; i < metric.GetSysts().GetNSplines(); ++i)
             posteriors[i].Fill(value(i+nphys));
         Eigen::VectorXf splines = value.segment(nphys, nspline);
-        post_covar += splines * splines.transpose();
+        Eigen::VectorXf diff = splines-splines_bf;
+        post_covar += diff * diff.transpose();
     };
     mh.run(100'000, 500'000, action);
     post_covar /= accepted;
