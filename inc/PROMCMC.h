@@ -119,6 +119,10 @@ struct simple_proposal {
                 float diff = metric.GetModel().ub(i) - metric.GetModel().lb(i);
                 if(std::isinf(diff)) diff = 5;
                 prob *= 1.0f / diff;
+            }else if(metric.GetSysts().spline_lo[i-nparams] == 0) {
+                float lo = metric.GetSysts().spline_lo[i-nparams];
+                float hi = metric.GetSysts().spline_hi[i-nparams];
+                return prob *= 1.0f / (hi - lo);
             } else {
                 if(value(i) <= metric.GetSysts().spline_lo[i-nparams] || value(i) >= metric.GetSysts().spline_hi[i-nparams] || 
                    given(i) <= metric.GetSysts().spline_lo[i-nparams] || given(i) >= metric.GetSysts().spline_hi[i-nparams]) {
