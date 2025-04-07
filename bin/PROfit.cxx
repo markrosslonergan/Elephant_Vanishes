@@ -1523,8 +1523,10 @@ std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, 
 
     int nspline = metric.GetSysts().GetNSplines();
     post_covar = Eigen::MatrixXf::Constant(nspline, nspline, 0);
+    size_t accepted = 0;
     std::vector<Eigen::VectorXf> specs;
     const auto action = [&](const Eigen::VectorXf &value) {
+        accepted += 1;
         int nphys = metric.GetModel().nparams;
         for(size_t i = 0; i < config.m_num_bins_total_collapsed; ++i)
             throws(i) = nd(PROseed::global_rng);
@@ -1535,6 +1537,7 @@ std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, 
         post_covar += splines * splines.transpose();
     };
     mh.run(100'000, 500'000, action);
+    post_covar /= accepted;
 
     //TODO: Only works with 1 mode/detector/channel
     cv = CollapseMatrix(config, cv);
