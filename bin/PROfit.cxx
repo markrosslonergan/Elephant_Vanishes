@@ -640,23 +640,32 @@ int main(int argc, char* argv[])
         Eigen::MatrixXf post_covar = fitter.Covariance();
 
         // TODO: Not sure I understand this covariance matrix
-        //Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
+        Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
 
-        //Eigen::MatrixXf covmat = Eigen::MatrixXf::Constant(nparams, nparams, 0);
-        //size_t count = 0;
-        //const auto action = [&](const Eigen::VectorXf &value) {
-        //    covmat += (value-best_fit) * (value-best_fit).transpose();
-        //    count += 1; 
-        //};
-        //mh.run(100'000, 500'000, action);
+        Eigen::MatrixXf covmat = Eigen::MatrixXf::Constant(nparams, nparams, 0);
+        size_t count = 0;
+        const auto action = [&](const Eigen::VectorXf &value) {
+            covmat += (value-best_fit) * (value-best_fit).transpose();
+            count += 1; 
+        };
+        mh.run(100'000, 500'000, action);
 
-        //TH2D covhist("ch", "", nparams, 0, nparams, nparams, 0, nparams);
-        //for(size_t i = 0; i < nparams; ++i)
-        //    for(size_t j = 0; j < nparams; ++j)
-        //        covhist.SetBinContent(i+1, j+1, covmat(i,j)/count);
-        //TCanvas c1;
-        //covhist.Draw("colz");
-        //c1.Print("postfit_cov.pdf");
+        TH2D covhist("ch", "", nparams, 0, nparams, nparams, 0, nparams);
+        for(size_t i = 0; i < nparams; ++i) {
+            std::string label = i < metric_to_use->GetModel().nparams 
+                ? metric_to_use->GetModel().pretty_param_names[i]
+                : config.m_mcgen_variation_plotname_map[metric_to_use->GetSysts().spline_names[i]].c_str();
+            covhist.GetXaxis()->SetBinLabel(i+1, label.c_str());
+            covhist.GetYaxis()->SetBinLabel(i+1, label.c_str());
+            for(size_t j = 0; j < nparams; ++j) {
+                covhist.SetBinContent(i+1, j+1, covmat(i,j)/count);
+            }
+        }
+        TCanvas c1;
+        covhist.SetMaximum(1);
+        covhist.SetMinimum(-1);
+        covhist.Draw("colz");
+        c1.Print((final_output_tag+"_postfit_cov.pdf").c_str());
         //std::cout << "Acceptance: " << (double)count / 5e4 << std::endl;
 
         std::string hname = "#chi^{2}/ndf = " + to_string(chi2) + "/" + to_string(config.m_num_bins_total_collapsed);
