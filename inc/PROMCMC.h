@@ -85,19 +85,18 @@ struct simple_proposal {
         for(int i = 0; i < ret.size(); ++i) {
             if(std::find(fixed.begin(), fixed.end(), i) != std::end(fixed)) continue;
             if(i < nparams) {
-                // TODO: How to use width with a uniform distribution
-                float lo = metric.GetModel().lb(i);
-                if(std::isinf(lo)) lo = -5;
-                float hi = metric.GetModel().ub(i);
-                if(std::isinf(hi)) hi = 5;
+                float lo = ret(i) - width;
+                float hi = ret(i) + width;
                 std::uniform_real_distribution<float> ud(lo, hi);
                 ret(i) = ud(rng);
             } else if(metric.GetSysts().spline_lo[i-nparams] == 0) {
                 // Currently there's some weird behavior with the 0-1 systematics
                 // which using a uniform distribution seems to fix
                 // TODO: How to use width with a uniform distribution
-                float lo = metric.GetSysts().spline_lo[i-nparams];
-                float hi = metric.GetSysts().spline_hi[i-nparams];
+                //float lo = metric.GetSysts().spline_lo[i-nparams];
+                //float hi = metric.GetSysts().spline_hi[i-nparams];
+                float lo = ret(i) - width;
+                float hi = ret(i) + width;
                 std::uniform_real_distribution<float> ud(lo, hi);
                 ret(i) = ud(rng);
             } else {
@@ -116,13 +115,15 @@ struct simple_proposal {
         for(int i = 0; i < value.size(); ++i) {
             if(std::find(fixed.begin(), fixed.end(), i) != std::end(fixed)) continue;
             if(i < nparams) {
-                float diff = metric.GetModel().ub(i) - metric.GetModel().lb(i);
-                if(std::isinf(diff)) diff = 5;
-                prob *= 1.0f / diff;
+                //float diff = metric.GetModel().ub(i) - metric.GetModel().lb(i);
+                //if(std::isinf(diff)) diff = 5;
+                //prob *= 1.0f / diff;
+                prob *= 1.0f / (2 * width);
             }else if(metric.GetSysts().spline_lo[i-nparams] == 0) {
-                float lo = metric.GetSysts().spline_lo[i-nparams];
-                float hi = metric.GetSysts().spline_hi[i-nparams];
-                return prob *= 1.0f / (hi - lo);
+                //float lo = metric.GetSysts().spline_lo[i-nparams];
+                //float hi = metric.GetSysts().spline_hi[i-nparams];
+                //prob *= 1.0f / (hi - lo);
+                prob *= 1.0f / (2 * width);
             } else {
                 if(value(i) <= metric.GetSysts().spline_lo[i-nparams] || value(i) >= metric.GetSysts().spline_hi[i-nparams] || 
                    given(i) <= metric.GetSysts().spline_lo[i-nparams] || given(i) >= metric.GetSysts().spline_hi[i-nparams]) {
