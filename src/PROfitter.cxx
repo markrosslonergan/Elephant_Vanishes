@@ -149,7 +149,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
         //After the best best fit, do you want to do more of the latin ones?
         x = Eigen::Map<Eigen::VectorXf>(latin_samples[best_multistart[i+1]].data(), latin_samples[best_multistart[i+1]].size());
-        log<LOG_INFO>(L"%1% || Starting local fit number %2%/%3% ") % __func__ % i; % fitconfig.n_localfit;
+        log<LOG_INFO>(L"%1% || Starting local fit number %2%/%3% ") % __func__ % i  % fitconfig.n_localfit;
 
 
         for (size_t attempt = 1; attempt <= fitconfig.n_max_local_retries; ++attempt) {

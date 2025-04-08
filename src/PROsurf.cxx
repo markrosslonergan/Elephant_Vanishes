@@ -159,17 +159,17 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
         //if not physis do normal
         if(!isphys){
             for (int j = 0; j <= nstep; ++j) {
-                int i;
+                int k;
                 if (j <= nstep - nstep / 2) {
-                    i = nstep / 2 + j;  // Forward direction
+                    k = nstep / 2 + j;  // Forward direction
                 } else {
                     if(!reset){
                         reset = true;
                         last_bf = init_seed;
                     }
-                    i = nstep - j;  // Backward direction
+                    k = nstep - j;  // Backward direction
                 }
-                float which_value =  std::isinf(lb(which_spline)) ? -3 + (ub(which_spline) - (-3)) * i / (float)nstep :   lb(which_spline) + (ub(which_spline) - lb(which_spline)) * i / (float)nstep;
+                float which_value =  std::isinf(lb(which_spline)) ? -3 + (ub(which_spline) - (-3)) * k / (float)nstep :   lb(which_spline) + (ub(which_spline) - lb(which_spline)) * k / (float)nstep;
                 test_values.push_back(which_value);       
             }
         }else{
