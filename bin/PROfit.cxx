@@ -160,7 +160,7 @@ std::map<std::string, std::unique_ptr<TH1D>> getCVHists(const PROspec & spec, co
 std::map<std::string, std::unique_ptr<TH2D>> covarianceTH2D(const PROsyst &syst, const PROconfig &config, const PROspec &cv);
 std::map<std::string, std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>>> getSplineGraphs(const PROsyst &systs, const PROconfig &config);
 std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, bool scale = false, int other_index = -1);
-std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, bool scale = false);
+std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, bool scale = false);
 
 enum class PlotOptions {
     Default = 0,
@@ -639,6 +639,35 @@ int main(int argc, char* argv[])
         Eigen::VectorXf best_fit = fitter.best_fit;
         Eigen::MatrixXf post_covar = fitter.Covariance();
 
+        // TODO: Not sure I understand this covariance matrix
+        Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
+
+        Eigen::MatrixXf covmat = Eigen::MatrixXf::Constant(nparams, nparams, 0);
+        size_t count = 0;
+        const auto action = [&](const Eigen::VectorXf &value) {
+            covmat += (value-best_fit) * (value-best_fit).transpose();
+            count += 1; 
+        };
+        mh.run(100'000, 500'000, action);
+
+        TH2D covhist("ch", "", nparams, 0, nparams, nparams, 0, nparams);
+        for(size_t i = 0; i < nparams; ++i) {
+            std::string label = i < metric_to_use->GetModel().nparams 
+                ? metric_to_use->GetModel().pretty_param_names[i]
+                : config.m_mcgen_variation_plotname_map[metric_to_use->GetSysts().spline_names[i-metric_to_use->GetModel().nparams]].c_str();
+            covhist.GetXaxis()->SetBinLabel(i+1, label.c_str());
+            covhist.GetYaxis()->SetBinLabel(i+1, label.c_str());
+            for(size_t j = 0; j < nparams; ++j) {
+                covhist.SetBinContent(i+1, j+1, covmat(i,j)/count);
+            }
+        }
+        TCanvas c1;
+        covhist.SetMaximum(1);
+        covhist.SetMinimum(-1);
+        covhist.Draw("colz");
+        c1.Print((final_output_tag+"_postfit_cov.pdf").c_str());
+        //std::cout << "Acceptance: " << (double)count / 5e4 << std::endl;
+
         std::string hname = "#chi^{2}/ndf = " + to_string(chi2) + "/" + to_string(config.m_num_bins_total_collapsed);
         PROspec cv = FillCVSpectrum(config, prop, true);
         PROspec bf = FillRecoSpectra(config, prop, metric_to_use->GetSysts(), metric_to_use->GetModel(), best_fit, true);
@@ -650,7 +679,8 @@ int main(int argc, char* argv[])
         }
         std::vector<TH1D> posteriors;
         std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs, binwidth_scale);
-        std::unique_ptr<TGraphAsymmErrors> post_err_band = getPostFitErrorBand(config, prop, *metric_to_use, best_fit, posteriors, binwidth_scale);
+        Eigen::MatrixXf spline_covariance;
+        std::unique_ptr<TGraphAsymmErrors> post_err_band = getPostFitErrorBand(config, prop, *metric_to_use, best_fit, posteriors, spline_covariance, binwidth_scale);
         
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
         chi2text.AddText(hname.c_str());
@@ -666,6 +696,17 @@ int main(int argc, char* argv[])
             c.Print((final_output_tag+"_postfit_posteriors.pdf").c_str());
         }
         c.Print((final_output_tag+"_postfit_posteriors.pdf]").c_str());
+
+        TH2F spline_cov("pc", "", spline_covariance.cols(), 0, spline_covariance.cols(), spline_covariance.rows(), 0, spline_covariance.rows());
+        for(int i = 0; i < spline_covariance.cols(); ++i) {
+            spline_cov.GetXaxis()->SetBinLabel(i+1, config.m_mcgen_variation_plotname_map[metric_to_use->GetSysts().spline_names[i]].c_str());
+            spline_cov.GetYaxis()->SetBinLabel(i+1, config.m_mcgen_variation_plotname_map[metric_to_use->GetSysts().spline_names[i]].c_str());
+            for(int j = 0; j < spline_covariance.rows(); ++j) {
+                spline_cov.SetBinContent(i+1, j+1, spline_covariance(i,j));
+            }
+        }
+        spline_cov.Draw("colz");
+        c.Print((final_output_tag+"_postfit_nuisance_covariance.pdf").c_str());
 
         PROfile profile(config, metric_to_use->GetSysts(), metric_to_use->GetModel(), *metric_to_use, myseed, fitconfig, 
                 final_output_tag+"_PROfile", chi2, !systs_only_profile, nthread, best_fit,
@@ -1472,7 +1513,7 @@ std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const P
     return ret;
 }
 
-std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, bool scale) {
+std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, bool scale) {
     // Fix physics parameters
     std::vector<int> fixed_pars;
     for(size_t i = 0; i < metric.GetModel().nparams; ++i) fixed_pars.push_back(i);
@@ -1489,16 +1530,25 @@ std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, 
     std::normal_distribution<float> nd;
     Eigen::VectorXf throws = Eigen::VectorXf::Constant(config.m_num_bins_total_collapsed, 0);
 
+    int nspline = metric.GetSysts().GetNSplines();
+    int nphys = metric.GetModel().nparams;
+    Eigen::VectorXf splines_bf = best_fit.segment(nphys, nspline);
+    post_covar = Eigen::MatrixXf::Constant(nspline, nspline, 0);
+    size_t accepted = 0;
     std::vector<Eigen::VectorXf> specs;
     const auto action = [&](const Eigen::VectorXf &value) {
-        int nphys = metric.GetModel().nparams;
+        accepted += 1;
         for(size_t i = 0; i < config.m_num_bins_total_collapsed; ++i)
             throws(i) = nd(PROseed::global_rng);
         specs.push_back(CollapseMatrix(config, FillRecoSpectra(config, prop, metric.GetSysts(), metric.GetModel(), value, true).Spec())+L*throws);
         for(size_t i = 0; i < metric.GetSysts().GetNSplines(); ++i)
             posteriors[i].Fill(value(i+nphys));
+        Eigen::VectorXf splines = value.segment(nphys, nspline);
+        Eigen::VectorXf diff = splines-splines_bf;
+        post_covar += diff * diff.transpose();
     };
-    mh.run(10'000, 50'000, action);
+    mh.run(100'000, 500'000, action);
+    post_covar /= accepted;
 
     //TODO: Only works with 1 mode/detector/channel
     cv = CollapseMatrix(config, cv);
