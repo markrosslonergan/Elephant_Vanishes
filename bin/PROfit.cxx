@@ -1624,6 +1624,8 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     bf_hist.SetLineColor(kGreen);
                     bf_hist.SetLineWidth(3);
                     leg->AddEntry(&bf_hist, "Best Fit");
+                    if(bool(opt&PlotOptions::AreaNormalized))
+                        bf_hist.Scale(1.0/bf_hist.Integral());
                     if(cv) bf_hist.Draw("hist same");
                     else bf_hist.Draw("hist");
                 }
@@ -1633,8 +1635,12 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     post_channel_errband = new TGraphAsymmErrors(&bf_hist);
                     int channel_start = other_index < 0 ? config.GetCollapsedGlobalBinStart(global_channel_index) : config.GetCollapsedGlobalOtherBinStart(global_channel_index, other_index);
                     for(size_t bin = 0; bin < channel_nbins; ++bin) {
-                        post_channel_errband->SetPointEYhigh(bin, (*posterrband)->GetErrorYhigh(bin+channel_start));
-                        post_channel_errband->SetPointEYlow(bin, (*posterrband)->GetErrorYlow(bin+channel_start));
+                        float scale = 1.0;
+                        if(bool(opt&PlotOptions::AreaNormalized)) {
+                            scale = post_channel_errband->GetPointY(bin) / (*posterrband)->GetPointY(bin+channel_start);
+                        }
+                        post_channel_errband->SetPointEYhigh(bin, scale*(*posterrband)->GetErrorYhigh(bin+channel_start));
+                        post_channel_errband->SetPointEYlow(bin, scale*(*posterrband)->GetErrorYlow(bin+channel_start));
                     }
                     post_channel_errband->SetFillColor(kCyan);
                     post_channel_errband->SetFillStyle(3354);
