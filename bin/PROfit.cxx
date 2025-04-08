@@ -1069,9 +1069,10 @@ int main(int argc, char* argv[])
         std::unique_ptr<PROmetric> allcov_metric(metric->Clone());
         allcov_metric->override_systs(allcovsyst);
         double chival = allcov_metric->getSingleChannelChi(global_channel_index);
-        log<LOG_INFO>(L"%1% || On channel %2% the datamc chi^2/ndof is %3%/%4% .") % __func__ % global_channel_index % chival % config.m_channel_num_bins[global_channel_index];
+        int ndf = config.m_channel_num_bins[global_channel_index] - bool(opt&PlotOptions::AreaNormalized);
+        log<LOG_INFO>(L"%1% || On channel %2% the datamc chi^2/ndof is %3%/%4% .") % __func__ % global_channel_index % chival % ndf;
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
-        chi2text.AddText(("#chi^{2}/ndf = "+to_string_prec(chival,2)+"/"+std::to_string(config.m_channel_num_bins[global_channel_index])).c_str());
+        chi2text.AddText(("#chi^{2}/ndf = "+to_string_prec(chival,2)+"/"+std::to_string(ndf)).c_str());
         chi2text.SetFillColor(0);
         chi2text.SetBorderSize(0);
         chi2text.SetTextAlign(12);
@@ -1590,7 +1591,11 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
         bf_spec = other_index < 0 ? CollapseMatrix(config, best_fit->Spec()) : CollapseMatrix(config, best_fit->Spec(), other_index);
     }
 
-    std::string ytitle = bool(opt&PlotOptions::BinWidthScaled) ? "Events/GeV" : "Events";
+    std::string ytitle = bool(opt&PlotOptions::AreaNormalized)
+        ? "Area Normalized"
+        : bool(opt&PlotOptions::BinWidthScaled) 
+            ? "Events/GeV" 
+            : "Events";
 
     size_t global_subchannel_index = 0;
     size_t global_channel_index = 0;
@@ -1648,8 +1653,12 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     channel_errband = new TGraphAsymmErrors(&cv_hist);
                     int channel_start = other_index < 0 ? config.GetCollapsedGlobalBinStart(global_channel_index) : config.GetCollapsedGlobalOtherBinStart(global_channel_index, other_index);
                     for(size_t bin = 0; bin < channel_nbins; ++bin) {
-                        channel_errband->SetPointEYhigh(bin, (*errband)->GetErrorYhigh(bin+channel_start));
-                        channel_errband->SetPointEYlow(bin, (*errband)->GetErrorYlow(bin+channel_start));
+                        float scale = 1.0;
+                        if(bool(opt&PlotOptions::AreaNormalized)) {
+                            scale = channel_errband->GetPointY(bin) / (*errband)->GetPointY(bin+channel_start);
+                        }
+                        channel_errband->SetPointEYhigh(bin, scale*(*errband)->GetErrorYhigh(bin+channel_start));
+                        channel_errband->SetPointEYlow(bin, scale*(*errband)->GetErrorYlow(bin+channel_start));
                     }
                     channel_errband->SetFillColor(kRed);
                     channel_errband->SetFillStyle(3345);
@@ -1666,6 +1675,8 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     bf_hist.SetLineColor(kGreen);
                     bf_hist.SetLineWidth(3);
                     leg->AddEntry(&bf_hist, "Best Fit");
+                    if(bool(opt&PlotOptions::AreaNormalized))
+                        bf_hist.Scale(1.0/bf_hist.Integral());
                     if(cv) bf_hist.Draw("hist same");
                     else bf_hist.Draw("hist");
                 }
@@ -1675,8 +1686,12 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     post_channel_errband = new TGraphAsymmErrors(&bf_hist);
                     int channel_start = other_index < 0 ? config.GetCollapsedGlobalBinStart(global_channel_index) : config.GetCollapsedGlobalOtherBinStart(global_channel_index, other_index);
                     for(size_t bin = 0; bin < channel_nbins; ++bin) {
-                        post_channel_errband->SetPointEYhigh(bin, (*posterrband)->GetErrorYhigh(bin+channel_start));
-                        post_channel_errband->SetPointEYlow(bin, (*posterrband)->GetErrorYlow(bin+channel_start));
+                        float scale = 1.0;
+                        if(bool(opt&PlotOptions::AreaNormalized)) {
+                            scale = post_channel_errband->GetPointY(bin) / (*posterrband)->GetPointY(bin+channel_start);
+                        }
+                        post_channel_errband->SetPointEYhigh(bin, scale*(*posterrband)->GetErrorYhigh(bin+channel_start));
+                        post_channel_errband->SetPointEYlow(bin, scale*(*posterrband)->GetErrorYlow(bin+channel_start));
                     }
                     post_channel_errband->SetFillColor(kCyan);
                     post_channel_errband->SetFillStyle(3354);
@@ -1695,6 +1710,8 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     leg->AddEntry(&data_hist, "Data");
                     if(bool(opt&PlotOptions::BinWidthScaled))
                         data_hist.Scale(1, "width");
+                    if(bool(opt&PlotOptions::AreaNormalized))
+                        data_hist.Scale(1.0/data_hist.Integral());
                     if(cv || best_fit) data_hist.Draw("PE1 same");
                     else data_hist.Draw("E1P");
                 }
