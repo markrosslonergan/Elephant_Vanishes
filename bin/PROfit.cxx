@@ -1028,9 +1028,10 @@ int main(int argc, char* argv[])
         std::unique_ptr<PROmetric> allcov_metric(metric->Clone());
         allcov_metric->override_systs(allcovsyst);
         double chival = allcov_metric->getSingleChannelChi(global_channel_index);
-        log<LOG_INFO>(L"%1% || On channel %2% the datamc chi^2/ndof is %3%/%4% .") % __func__ % global_channel_index % chival % config.m_channel_num_bins[global_channel_index];
+        int ndf = config.m_channel_num_bins[global_channel_index] - bool(opt&PlotOptions::AreaNormalized);
+        log<LOG_INFO>(L"%1% || On channel %2% the datamc chi^2/ndof is %3%/%4% .") % __func__ % global_channel_index % chival % ndf;
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
-        chi2text.AddText(("#chi^{2}/ndf = "+to_string_prec(chival,2)+"/"+std::to_string(config.m_channel_num_bins[global_channel_index])).c_str());
+        chi2text.AddText(("#chi^{2}/ndf = "+to_string_prec(chival,2)+"/"+std::to_string(ndf)).c_str());
         chi2text.SetFillColor(0);
         chi2text.SetBorderSize(0);
         chi2text.SetTextAlign(12);
