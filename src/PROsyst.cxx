@@ -20,6 +20,7 @@ namespace PROfit {
                 spline_names.push_back(syst.systname); 
                 spline_lo.push_back(syst.knobval[0]);
                 spline_hi.push_back(syst.knobval.back());
+                true_binned_spline.push_back(syst.true_bins);
             } else if(syst.mode == "covariance") {
                 this->CreateMatrix(syst);
                 covar_names.push_back(syst.systname);
