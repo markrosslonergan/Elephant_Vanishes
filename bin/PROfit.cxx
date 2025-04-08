@@ -1540,7 +1540,11 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
         bf_spec = other_index < 0 ? CollapseMatrix(config, best_fit->Spec()) : CollapseMatrix(config, best_fit->Spec(), other_index);
     }
 
-    std::string ytitle = bool(opt&PlotOptions::BinWidthScaled) ? "Events/GeV" : "Events";
+    std::string ytitle = bool(opt&PlotOptions::AreaNormalized)
+        ? "Area Normalized"
+        : bool(opt&PlotOptions::BinWidthScaled) 
+            ? "Events/GeV" 
+            : "Events";
 
     size_t global_subchannel_index = 0;
     size_t global_channel_index = 0;
@@ -1598,8 +1602,12 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     channel_errband = new TGraphAsymmErrors(&cv_hist);
                     int channel_start = other_index < 0 ? config.GetCollapsedGlobalBinStart(global_channel_index) : config.GetCollapsedGlobalOtherBinStart(global_channel_index, other_index);
                     for(size_t bin = 0; bin < channel_nbins; ++bin) {
-                        channel_errband->SetPointEYhigh(bin, (*errband)->GetErrorYhigh(bin+channel_start));
-                        channel_errband->SetPointEYlow(bin, (*errband)->GetErrorYlow(bin+channel_start));
+                        float scale = 1.0;
+                        if(bool(opt&PlotOptions::AreaNormalized)) {
+                            scale = channel_errband->GetPointY(bin) / (*errband)->GetPointY(bin+channel_start);
+                        }
+                        channel_errband->SetPointEYhigh(bin, scale*(*errband)->GetErrorYhigh(bin+channel_start));
+                        channel_errband->SetPointEYlow(bin, scale*(*errband)->GetErrorYlow(bin+channel_start));
                     }
                     channel_errband->SetFillColor(kRed);
                     channel_errband->SetFillStyle(3345);
@@ -1645,6 +1653,8 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     leg->AddEntry(&data_hist, "Data");
                     if(bool(opt&PlotOptions::BinWidthScaled))
                         data_hist.Scale(1, "width");
+                    if(bool(opt&PlotOptions::AreaNormalized))
+                        data_hist.Scale(1.0/data_hist.Integral());
                     if(cv || best_fit) data_hist.Draw("PE1 same");
                     else data_hist.Draw("E1P");
                 }
