@@ -2,6 +2,7 @@
 #define PROSYST_H_
 
 //C++ include 
+#include <Eigen/Eigen>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -30,8 +31,11 @@ namespace PROfit {
             /*Function: Primary constructor from a vector of SystStructs  */
             PROsyst(const PROpeller &prop, const PROconfig &config, const std::vector<SystStruct>& systs, bool shapeonly=false, int other_index = -1);
 
-            PROsyst subset(const std::vector<std::string> &systs);
-            PROsyst excluding(const std::vector<std::string> &systs);
+            PROsyst subset(const std::vector<std::string> &systs) const;
+            PROsyst excluding(const std::vector<std::string> &systs) const;
+            PROsyst allsplines2cov(const PROconfig &config, const PROpeller &prop, uint32_t seed) const;
+
+            Eigen::MatrixXf spline2cov(int idx, const PROconfig &config, const PROpeller &prop, uint32_t seed) const;
 
             /* Function: given the systematic name, return corresponding fractional covariance matrix */
             Eigen::MatrixXf GrabMatrix(const std::string& sys) const;

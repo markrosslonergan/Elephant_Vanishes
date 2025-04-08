@@ -33,9 +33,9 @@ namespace PROfit{
             }
 
 
+            static inline std::mt19937 global_rng; 
         private:
             static inline std::random_device rd; 
-            static inline std::mt19937 global_rng; 
             std::vector<uint32_t> thread_seeds;
             size_t n_threads;
     };

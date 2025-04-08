@@ -108,7 +108,7 @@ void PROsurf::FillSurfaceStat(const PROconfig &config, const PROfitterConfig &fi
     delete local_metric;
 }
 
-std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PROfitterConfig &fitconfig, int start, int end, float minchi, bool with_osc, const Eigen::VectorXf& init_seed, uint32_t seed) {
+std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PROfitterConfig &fitconfig, int offset, int stride, float minchi, bool with_osc, const Eigen::VectorXf& init_seed, uint32_t seed) {
 
     std::vector<profOut> outs;
     // Make a local copy for this thread
@@ -139,14 +139,14 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
     }
 
     //loop over this threads todo list
-    for(int i=start; i<end;i++){
+    for(int i=offset; i<nparams;i+=stride) {
         local_metric->reset();
 
         size_t which_spline= i;
         bool isphys = which_spline < local_metric->GetModel().nparams;
         profOut output;
 
-        log<LOG_INFO>(L"%1% || THREADS %2% in this batch if ( %3%,%4% )") % __func__ %  i % start % end;
+        log<LOG_INFO>(L"%1% || THREADS %2% in this batch if ( %3%,%4% )") % __func__ %  i % offset % stride;
 
 
         Eigen::VectorXf last_bf;
@@ -408,18 +408,20 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     log<LOG_INFO>(L"%1% || Starting THREADS  : %2% , Loops %3%, Chunks %4%") % __func__ % nThreads % loopSize % chunkSize;
 
     for (int t = 0; t < nThreads; ++t) {
-        int start = t * chunkSize;
-        int end = (t == nThreads - 1) ? loopSize : start + chunkSize;
-        futures.emplace_back(std::async(std::launch::async, [&, start, end]() {
-                    return this->PROfilePointHelper(&systs, fitconfig, start, end, minchi, with_osc, init_seed, proseed.getThreadSeeds()->at(t));
+        futures.emplace_back(std::async(std::launch::async, [&, t]() {
+                    return this->PROfilePointHelper(&systs, fitconfig, t, nThreads, minchi, with_osc, init_seed, proseed.getThreadSeeds()->at(t));
                     }));
 
     }
 
-    std::vector<profOut> combinedResults;
+    std::vector<profOut> combinedResults(nparams);
+    int offset = 0;
+    int stride = nThreads;
     for (auto& fut : futures) {
         std::vector<profOut> result = fut.get();
-        combinedResults.insert(combinedResults.end(), result.begin(), result.end());
+        for(size_t i = 0; i < result.size(); ++i)
+            combinedResults.at(offset+i*stride) = result.at(i);
+        ++offset;
     }
 
 
