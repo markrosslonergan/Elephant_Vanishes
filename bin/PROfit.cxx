@@ -582,6 +582,20 @@ int main(int argc, char* argv[])
                     % __func__ % value;
                 return 1;
             }
+        }else if(param_name == "n_swarm_particles") {
+            fitconfig.n_swarm_particles = value;
+            if(fitconfig.n_swarm_particles < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 PSO swarm particle point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
+        }else if(param_name == "n_swarm_iterations") {
+            fitconfig.n_swarm_iterations = value;
+            if(fitconfig.n_swarm_iterations < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 swarm_iterations point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
         } else {
             log<LOG_WARNING>(L"%1% || Unrecognized LBFGSB parameter %2%. Will ignore.") 
                 % __func__ % param_name.c_str();

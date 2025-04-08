@@ -10,16 +10,16 @@ namespace PROfit {
 
     struct PROfitterConfig {
         LBFGSpp::LBFGSBParam<float> param;
-        int n_multistart = 2000, n_swarm_particles = 20, n_swarm_iterations=100, n_localfit=1;
+        int n_multistart = 1500, n_swarm_particles = 1, n_swarm_iterations=1, n_localfit=3;
         size_t n_max_local_retries = 3;
 
         void print(){
             log<LOG_INFO>(L"%1% || Printing PROfitterConifg Values.") % __func__;
             log<LOG_INFO>(L"%1% || ------------ PROfitter specific -------------- ") % __func__ ;
-            log<LOG_INFO>(L"%1% || n_multistart: %2% (default 2000) ") % __func__ % n_multistart;
-            log<LOG_INFO>(L"%1% || n_swarm_particles: %2% (default 20) ") % __func__ % n_swarm_particles;
-            log<LOG_INFO>(L"%1% || n_swarm_iterations: %2% (default 100) ") % __func__ % n_swarm_iterations;
-            log<LOG_INFO>(L"%1% || n_localfit: %2% (default 1) ") % __func__ % n_localfit;
+            log<LOG_INFO>(L"%1% || n_multistart: %2% (default 1500) ") % __func__ % n_multistart;
+            log<LOG_INFO>(L"%1% || n_swarm_particles: %2% (default 1) ") % __func__ % n_swarm_particles;
+            log<LOG_INFO>(L"%1% || n_swarm_iterations: %2% (default 1) ") % __func__ % n_swarm_iterations;
+            log<LOG_INFO>(L"%1% || n_localfit: %2% (default 3) ") % __func__ % n_localfit;
             log<LOG_INFO>(L"%1% || n_max_local_retries: %2% (default 3) ") % __func__ % n_max_local_retries;
             log<LOG_INFO>(L"%1% || ------------ LBFGSBParam -------------- ") % __func__ ;
             log<LOG_INFO>(L"%1% || m: %2%  (default %3%) ") % __func__ % param.m % 6;
