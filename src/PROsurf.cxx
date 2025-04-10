@@ -60,7 +60,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, int start
 
         int which_spline= i;
         bool isphys = which_spline < local_metric->GetModel().nparams;
-        //if(isphys) nstep=4*nstep;
+        if(isphys) nstep=4*nstep;
         profOut output;
 
         log<LOG_INFO>(L"%1% || THREADS %2% in this batch if ( %3%,%4% )") % __func__ %  i % start % end;
@@ -105,18 +105,21 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, int start
             ub[which_spline] = which_value;
 
             LBFGSpp::LBFGSBParam<float> param;
-            param.epsilon = 1e-6;
-            param.max_iterations = 50;
-            param.max_linesearch = 100;
-            param.delta = 1e-6;
-	    param.past = 1.e-4;
+            param.epsilon = 1e-7;
+            param.max_iterations = 100;
+            param.max_linesearch = 250;
+            param.delta = 1e-7;
+	    param.past = 1;
+	    param.max_submin = 20;
             local_metric->fixSpline(which_spline,which_value);
 
             PROfitter fitter(ub, lb, param);
             if(last_bf.norm()>0){
                 fx = fitter.Fit(*local_metric,last_bf);
+		profile_fit_failures += fitter.n_failures;
             }else{
                 fx = fitter.Fit(*local_metric);
+		profile_fit_failures += fitter.n_failures;
             }
             output.knob_chis.push_back(fx);
             last_bf = fitter.best_fit;
@@ -163,11 +166,12 @@ std::vector<surfOut> PROsurf::PointHelper(std::vector<surfOut> multi_physics_par
         }
 
         LBFGSpp::LBFGSBParam<float> param;
-        param.epsilon = 1e-6;
-        param.max_iterations = 50;
-        param.max_linesearch = 100;
-        param.delta = 1e-6;
-	param.past = 1e-4;
+        param.epsilon = 1e-7;
+        param.max_iterations = 100;
+        param.max_linesearch = 250;
+        param.delta = 1e-7;
+	param.past = 1;
+	param.max_submin = 20;
         Eigen::VectorXf lb(nparams+2);
         lb << local_metric->GetModel().lb, Eigen::VectorXf::Map(local_metric->GetSysts().spline_lo.data(), local_metric->GetSysts().spline_lo.size());
         Eigen::VectorXf ub(nparams+2);
@@ -275,18 +279,19 @@ std::vector<float> findMinAndBounds(TGraph *g, float val,float range) {
         }
     }
     
-    return {minX,leftX,rightX};
+    return {minX,leftX,rightX,minY};
 }
 
 
 PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &systs, const PROmodel &model, const PROspec &data, PROmetric &metric, std::string filename, bool with_osc, int nThreads, const Eigen::VectorXf & init_seed) : metric(metric) {
 
     LBFGSpp::LBFGSBParam<float> param;
-    param.epsilon = 1e-6;
-    param.max_iterations = 50;
-    param.max_linesearch = 100;
-    param.delta = 1e-6;
-    param.past = 1.e-4;
+    param.epsilon = 1e-7;
+    param.max_iterations = 100;
+    param.max_linesearch = 250;
+    param.delta = 1e-7;
+    param.past = 1;
+    param.max_submin = 20;
 
     LBFGSpp::LBFGSBSolver<float> solver(param);
     int nparams = systs.GetNSplines() + model.nparams*with_osc;
@@ -323,6 +328,8 @@ PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &
     std::vector<std::future<std::vector<profOut>>> futures; 
 
     log<LOG_INFO>(L"%1% || Starting THREADS  : %2% , Loops %3%, Chunks %4%") % __func__ % nThreads % loopSize % chunkSize;
+    
+    profile_fit_failures = 0;
 
     for (int t = 0; t < nThreads; ++t) {
         int start = t * chunkSize;
@@ -394,6 +401,8 @@ PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &
 
     log<LOG_INFO>(L"%1% || Getting BF, +/- one sigma ranges. Is Two sigma turned on? : %2% ") % __func__ % twosig;
 
+    minChiSquares.clear();
+
     int count = 0;
     for(auto &g:graphs){
         //if(metric->GetModel().nparams)continue;
@@ -418,6 +427,8 @@ PROfile::PROfile(const PROconfig &config, const PROpeller &prop, const PROsyst &
 	  physics_params_errors.push_back( tmp[1]-tmp[0] );
 	  physics_params_errors.push_back( tmp[2]-tmp[0] );
 	  log<LOG_DEBUG>(L"%1% || Saving %2% and %3%") % __func__ % values1_errdown[count] % values1_errup[count];	  
+	  minChiSquares.push_back( tmp[3] );
+	  log<LOG_DEBUG>(L"%1% || Saving min of the chi-square which is %2%") % __func__ % tmp[3]; 
 	}
 	  
         if(twosig){

@@ -90,11 +90,12 @@ int main(int argc, char* argv[])
     PROchi chi("", myConf, myprop, &systs, *model, data, PROfit::PROchi::BinnedChi2);
 
     LBFGSpp::LBFGSBParam<float> param;  
-    param.epsilon = 1e-6;
-    param.max_iterations = 50;
-    param.max_linesearch = 250;
-    param.delta = 1e-6;
-    param.past = 1.e-4;
+    param.epsilon = 1.e-8;
+    param.max_iterations = 100;
+    param.max_linesearch = 400;
+    param.delta = 1e-7;
+    param.past = 1; // alternatives are integer values!! 
+    param.max_submin = 20;
 
     size_t nparams = 2 + systs.GetNSplines();
     Eigen::VectorXf lb = Eigen::VectorXf::Constant(nparams, -3.0);
@@ -187,9 +188,8 @@ int main(int argc, char* argv[])
     std::vector<float> bestfit_params_errors; // asymmetric errors 
     PROfile myPROf(myConf, myprop, systs, *model, data, chi,filename, true, nthread, best_fit);
     bestfit_params_errors = myPROf.asym_error_phys;
-    // save info to output .txt file in the current format:
-    // dmsq_inj sinsq_inj dmsq_bestfit sinsq_bestfit err_low_dmsq err_up_dmsq err_low_sinsq err_up_sinsq nfits failed 
-
+      // save info to output .txt file in the current format:
+    // dmsq_inj sinsq_inj dmsq_bestfit sinsq_bestfit err_low_dmsq err_up_dmsq err_low_sinsq err_up_sinsq nfits failed (main fit) nfits failed (PROfile) minChiSquare_dmsq minChiSquare_sinsq (post-profile) 
     std::string string_subvector1 = "";
     string_subvector1 = std::to_string(injected_pt[0]) + " " + std::to_string(injected_pt[1]); 
 
@@ -208,7 +208,10 @@ int main(int argc, char* argv[])
     std::ofstream file_fit_parameters;
     file_fit_parameters.open(fitoutputfilename.c_str(),std::ios_base::app);
     //file_fit_parameters << "Best Point (only parameters of interest) are " << string_subvector1 << std::endl;                                                                                            
-    file_fit_parameters << string_subvector1 << "\t" << fitter.n_failures << std::endl;
+    file_fit_parameters << string_subvector1 << "\t" << fitter.n_failures << "\t" << myPROf.profile_fit_failures 
+			<< "\t" << myPROf.minChiSquares[0] << "\t" << myPROf.minChiSquares[1]
+			<< "\t" << chi2
+			<< std::endl;
     file_fit_parameters.close();
     
     return 0;
