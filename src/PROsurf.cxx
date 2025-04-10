@@ -116,7 +116,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
     int nparams = local_metric->GetModel().nparams + systs->GetNSplines();
     int nstep = 18;
 
-    Eigen::VectorXf ub, lb;
+    Eigen::VectorXf ub, lb, tub, tlb;
 
     if(with_osc) {
         lb = Eigen::VectorXf::Constant(nparams, -3.0);
@@ -137,9 +137,12 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
         lb = Eigen::VectorXf::Map(systs->spline_lo.data(), systs->spline_lo.size());
         nparams = systs->GetNSplines();
     }
-
+   
     //loop over this threads todo list
     for(int i=offset; i<nparams;i+=stride) {
+         tlb = lb;
+         tub = ub;
+
         local_metric->reset();
 
         size_t which_spline= i;
@@ -184,12 +187,12 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
             float fx;
             output.knob_vals.push_back(which_value);
 
-            lb[which_spline] = which_value;
-            ub[which_spline] = which_value;
+            tlb[which_spline] = which_value;
+            tub[which_spline] = which_value;
 
             local_metric->fixSpline(which_spline,which_value);
 
-            PROfitter fitter(ub, lb, fitconfig, seed+i);
+            PROfitter fitter(tub, tlb, fitconfig, seed+i);
             if(last_bf.norm()>0){
                 fx = fitter.Fit(*local_metric,last_bf);
             }else{
@@ -408,6 +411,12 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     log<LOG_INFO>(L"%1% || Starting THREADS  : %2% , Loops %3%, Chunks %4%") % __func__ % nThreads % loopSize % chunkSize;
 
     for (int t = 0; t < nThreads; ++t) {
+        std::string  strD = "";
+        for(int i=t; i<nparams;i+=nThreads) {
+            strD+=std::to_string(i);
+        }
+        log<LOG_INFO>(L"%1% || THREAD #%2% runs pts: %3% ") % __func__ % t % strD.c_str();
+
         futures.emplace_back(std::async(std::launch::async, [&, t]() {
                     return this->PROfilePointHelper(&systs, fitconfig, t, nThreads, minchi, with_osc, init_seed, proseed.getThreadSeeds()->at(t));
                     }));
@@ -505,6 +514,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
         graphs[w]->GetYaxis()->SetLabelSize(0.04);            
         graphs[w]->GetXaxis()->SetTitleSize(0.04);             
         graphs[w]->GetXaxis()->SetLabelSize(0.04);            
+        graphs[w]->GetYaxis()->SetRangeUser(0, graphs[w]->GetHistogram()->GetMaximum());
 
         TLine* line = new TLine(graphs[w]->GetXaxis()->GetXmin(), 1, graphs[w]->GetXaxis()->GetXmax(), 1);
         line->SetLineStyle(3);  // Dotted line style (1 is solid, 2 is dashed, 3 is dotted)

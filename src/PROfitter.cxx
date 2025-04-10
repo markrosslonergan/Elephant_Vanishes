@@ -71,7 +71,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     std::vector<float> chi2s_multistart;
     chi2s_multistart.reserve(fitconfig.n_multistart);
 
-    log<LOG_INFO>(L"%1% || Starting MultiGlobal runs : %2%") % __func__ % fitconfig.n_multistart ;
+    log<LOG_INFO>(L"%1% || Starting MultiGlobal runs (i.e latin hypercube runs, pure chi^2 no grad) : %2%") % __func__ % fitconfig.n_multistart ;
     for(int s = 0; s < fitconfig.n_multistart; s++){
         Eigen::VectorXf x = Eigen::Map<Eigen::VectorXf>(latin_samples[s].data(), latin_samples[s].size());
         Eigen::VectorXf grad = Eigen::VectorXf::Constant(x.size(), 0);
@@ -96,7 +96,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
         swarm_string += " " + std::to_string(chi2s_multistart[best_multistart[s]]);
         swarm_start_points.push_back(latin_samples[best_multistart[s]]);
     }
-    log<LOG_INFO>(L"%1% || This along with %2% swarm points chis of %3% ") % __func__ % fitconfig.n_swarm_particles % swarm_string.c_str();
+    log<LOG_INFO>(L"%1% || Will swarm with %2% swarm points chis of %3% ") % __func__ % fitconfig.n_swarm_particles % swarm_string.c_str();
 
     PROswarm PSO(metric, rng, swarm_start_points, lb, ub , fitconfig.n_swarm_iterations);
     PSO.runSwarm(metric, rng);
@@ -149,7 +149,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
         //After the best best fit, do you want to do more of the latin ones?
         x = Eigen::Map<Eigen::VectorXf>(latin_samples[best_multistart[i+1]].data(), latin_samples[best_multistart[i+1]].size());
-        log<LOG_INFO>(L"%1% || Starting local fit number %2%/%3% ") % __func__ % i  % fitconfig.n_localfit;
+        log<LOG_INFO>(L"%1% || Starting n_localfit local fit number %2%/%3% ") % __func__ % i  % fitconfig.n_localfit;
 
 
         for (size_t attempt = 1; attempt <= fitconfig.n_max_local_retries; ++attempt) {
@@ -185,7 +185,7 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     log<LOG_INFO>(L"%1% || FINAL has a chi %2%") % __func__ %  chimin;
     std::string spec_string = "";
     for(auto &f : best_fit) spec_string+=" "+std::to_string(f); 
-    log<LOG_DEBUG>(L"%1% || FINAL is  : %2% ") % __func__ % spec_string.c_str();
+    log<LOG_INFO>(L"%1% || FINAL is  : %2% ") % __func__ % spec_string.c_str();
 
     return chimin;
 }
