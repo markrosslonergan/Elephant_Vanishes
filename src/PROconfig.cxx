@@ -763,10 +763,15 @@ int PROconfig::LoadFromXML(const std::string &filename){
                 std::string wt = std::string(pAllowList->GetText());
                 const char *variation_type = pAllowList->Attribute("type");
                 const char *plot_name = pAllowList->Attribute("plotname");
+                const char *binning = pAllowList->Attribute("binning");
                 m_mcgen_variation_type.push_back(variation_type);
                 m_mcgen_variation_type_map[wt] = variation_type;
                 m_mcgen_variation_allowlist.push_back(wt);
                 m_mcgen_variation_plotname_map[wt] = plot_name ? plot_name : wt;
+                m_mcgen_variation_truebinned_map[wt] = binning ? strcmp(binning, "truth") == 0 : false;
+                if(binning && strcmp(binning, "truth") != 0 && strcmp(binning, "reco") != 0)
+                    log<LOG_WARNING>(L"%1% || Unrecognized binning '%2%' for systematic %3%. Defaulting to reco bins.") 
+                        % __func__ % binning % wt.c_str();
                 log<LOG_DEBUG>(L"%1% || Allowlisting variations: %2%") % __func__ % wt.c_str() ;
                 pAllowList = pAllowList->NextSiblingElement("allowlist");
             }
