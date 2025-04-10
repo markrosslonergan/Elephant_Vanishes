@@ -14,6 +14,34 @@
 
 using namespace PROfit;
 
+std::vector<float> linspace(float start, float end, int N, bool endpoint = true) {
+    std::vector<float> result;
+    result.reserve(N);
+    if (N == 0) return result;
+    if (N == 1) {
+        result.push_back(start);
+        return result;
+    }
+
+    float step = (end - start) / (endpoint ? (N - 1) : N);
+    for (int i = 0; i < N; ++i) {
+        result.push_back(start + i * step);
+    }
+    return result;
+}
+std::vector<float> combined_sparse_dense(float Amin, float Amax, float CV, int Nsparse, int Ndense, float dense_width) {
+    std::vector<float> sparse = linspace(Amin, Amax, Nsparse);  // global scan
+    std::vector<float> dense = linspace(CV - dense_width / 2.0, CV + dense_width / 2.0, Ndense-1);  // local dense
+    dense.push_back(CV);
+
+    sparse.insert(sparse.end(), dense.begin(), dense.end());
+    std::sort(sparse.begin(), sparse.end());
+
+    sparse.erase(std::unique(sparse.begin(), sparse.end(),[](float a, float b) { return std::fabs(a - b) < 1e-8; }), sparse.end());
+
+    return sparse;
+}
+
 PROsurf::PROsurf(PROmetric &metric,  size_t x_idx, size_t y_idx, size_t nbinsx, LogLin llx, float x_lo, float x_hi, size_t nbinsy, LogLin lly, float y_lo, float y_hi) : metric(metric), x_idx(x_idx), y_idx(y_idx), nbinsx(nbinsx), nbinsy(nbinsy), edges_x(Eigen::VectorXf::Constant(nbinsx + 1, 0)), edges_y(Eigen::VectorXf::Constant(nbinsy + 1, 0)), surface(nbinsx, nbinsy) {
     if(llx == LogAxis) {
         x_lo = std::log10(x_lo);
@@ -86,14 +114,39 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
     // Make a local copy for this thread
     PROmetric *local_metric = metric.Clone();
     int nparams = local_metric->GetModel().nparams + systs->GetNSplines();
-    int nstep = 20;
+    int nstep = 18;
 
+    Eigen::VectorXf ub, lb, tub, tlb;
+
+    if(with_osc) {
+        lb = Eigen::VectorXf::Constant(nparams, -3.0);
+        ub = Eigen::VectorXf::Constant(nparams, 3.0);
+        size_t nphys = local_metric->GetModel().nparams;
+        //set physics to correct values
+        for(size_t j=0; j<nphys; j++){
+            ub(j) = local_metric->GetModel().ub(j);
+            lb(j) = local_metric->GetModel().lb(j); 
+        }
+        //upper lower bounds for splines
+        for(int j = nphys; j < nparams; ++j) {
+            lb(j) = systs->spline_lo[j-nphys];
+            ub(j) = systs->spline_hi[j-nphys];
+        }
+    } else {
+        ub = Eigen::VectorXf::Map(systs->spline_hi.data(), systs->spline_hi.size());
+        lb = Eigen::VectorXf::Map(systs->spline_lo.data(), systs->spline_lo.size());
+        nparams = systs->GetNSplines();
+    }
+   
+    //loop over this threads todo list
     for(int i=offset; i<nparams;i+=stride) {
+         tlb = lb;
+         tub = ub;
+
         local_metric->reset();
 
         size_t which_spline= i;
         bool isphys = which_spline < local_metric->GetModel().nparams;
-        if(isphys) nstep=4*nstep;
         profOut output;
 
         log<LOG_INFO>(L"%1% || THREADS %2% in this batch if ( %3%,%4% )") % __func__ %  i % offset % stride;
@@ -101,46 +154,45 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
 
         Eigen::VectorXf last_bf;
         if(init_seed.norm()>0) last_bf= init_seed;
-        for(int i=0; i<=nstep;i++){
-            Eigen::VectorXf ub, lb;
+        bool reset = false;
 
-            if(with_osc) {
-                lb = Eigen::VectorXf::Constant(nparams, -3.0);
-                ub = Eigen::VectorXf::Constant(nparams, 3.0);
-                size_t nphys = local_metric->GetModel().nparams;
-                //set physics to correct values
-                for(size_t j=0; j<nphys; j++){
-                    ub(j) = local_metric->GetModel().ub(j);
-                    lb(j) = local_metric->GetModel().lb(j); 
+        //first get what values to sample
+        std::vector<float> test_values;
+
+        //if not physis do normal
+        if(!isphys){
+            for (int j = 0; j <= nstep; ++j) {
+                int k;
+                if (j <= nstep - nstep / 2) {
+                    k = nstep / 2 + j;  // Forward direction
+                } else {
+                    if(!reset){
+                        reset = true;
+                        last_bf = init_seed;
+                    }
+                    k = nstep - j;  // Backward direction
                 }
-                //upper lower bounds for splines
-                for(int j = nphys; j < nparams; ++j) {
-                    lb(j) = systs->spline_lo[j-nphys];
-                    ub(j) = systs->spline_hi[j-nphys];
-                }
-            } else {
-                ub = Eigen::VectorXf::Map(systs->spline_hi.data(), systs->spline_hi.size());
-                lb = Eigen::VectorXf::Map(systs->spline_lo.data(), systs->spline_lo.size());
-                nparams = systs->GetNSplines();
+                float which_value =  std::isinf(lb(which_spline)) ? -3 + (ub(which_spline) - (-3)) * k / (float)nstep :   lb(which_spline) + (ub(which_spline) - lb(which_spline)) * k / (float)nstep;
+                test_values.push_back(which_value);       
             }
+        }else{
+            //if its physics, 
+                test_values = combined_sparse_dense(std::isinf(lb(which_spline)) ? -3 : lb(which_spline), ub(which_spline), init_seed(which_spline), nstep, nstep*0.8, 0.2 );
+        }
 
 
-
-            float which_value =  std::isinf(lb(which_spline)) ? -3 + (ub(which_spline) - (-3)) * i / (float)nstep :   lb(which_spline) + (ub(which_spline) - lb(which_spline)) * i / (float)nstep;
+        //and minimize
+        for(auto &v: test_values){
+            float which_value = v;    
             float fx;
             output.knob_vals.push_back(which_value);
 
-            //log<LOG_INFO>(L"%1% || Fixed value of spline # %2% is value %3%, has a chi PRE of : %4% (i %5% nstep %6% || ub %7% lb %8% ") % __func__ % which_spline % which_value % fx % i % nstep % lb.size() % ub.size() ;
-            //std::vector<float> ubv(ub.data(), ub.data() + ub.size());
-            //std::vector<float> lbv(lb.data(), lb.data() + lb.size());
-            //log<LOG_INFO>(L"%1% || lb %2%  ub %3% ") % __func__ % lbv % ubv  ;
-
-            lb[which_spline] = which_value;
-            ub[which_spline] = which_value;
+            tlb[which_spline] = which_value;
+            tub[which_spline] = which_value;
 
             local_metric->fixSpline(which_spline,which_value);
 
-            PROfitter fitter(ub, lb, fitconfig, seed+i);
+            PROfitter fitter(tub, tlb, fitconfig, seed+i);
             if(last_bf.norm()>0){
                 fx = fitter.Fit(*local_metric,last_bf);
             }else{
@@ -155,8 +207,8 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
             log<LOG_INFO>(L"%1% || Fixed value of spline # %2% is value %3%, has a chi post of : %4% (i %5% nstep %6% ") % __func__ % which_spline % which_value % fx % i % nstep;
             log<LOG_INFO>(L"%1% || at a BF param value of @ %2%") % __func__ %  spec_string.c_str();
 
-        }    //end spline loop        
-
+        }    //end step loop        
+        output.sort();
         outs.push_back(output);
 
     }//end thread
@@ -359,6 +411,12 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
     log<LOG_INFO>(L"%1% || Starting THREADS  : %2% , Loops %3%, Chunks %4%") % __func__ % nThreads % loopSize % chunkSize;
 
     for (int t = 0; t < nThreads; ++t) {
+        std::string  strD = "";
+        for(int i=t; i<nparams;i+=nThreads) {
+            strD+=std::to_string(i);
+        }
+        log<LOG_INFO>(L"%1% || THREAD #%2% runs pts: %3% ") % __func__ % t % strD.c_str();
+
         futures.emplace_back(std::async(std::launch::async, [&, t]() {
                     return this->PROfilePointHelper(&systs, fitconfig, t, nThreads, minchi, with_osc, init_seed, proseed.getThreadSeeds()->at(t));
                     }));
@@ -456,6 +514,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
         graphs[w]->GetYaxis()->SetLabelSize(0.04);            
         graphs[w]->GetXaxis()->SetTitleSize(0.04);             
         graphs[w]->GetXaxis()->SetLabelSize(0.04);            
+        graphs[w]->GetYaxis()->SetRangeUser(0, graphs[w]->GetHistogram()->GetMaximum());
 
         TLine* line = new TLine(graphs[w]->GetXaxis()->GetXmin(), 1, graphs[w]->GetXaxis()->GetXmax(), 1);
         line->SetLineStyle(3);  // Dotted line style (1 is solid, 2 is dashed, 3 is dotted)
@@ -493,7 +552,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
                 graphClone->GetXaxis()->SetLabelSize(0.04);            
 
                 log<LOG_INFO>(L"%1% || Zoom boundaries X %2% %3% Y %4% %5%  ") % __func__ % pd % pu % 0.0 % (std::max(graphClone->Eval(pu),graphClone->Eval(pd))*1.1)  ;
-           
+
                 TLine *line1 = new TLine(pd, 1, pu, 1);
                 line1->SetLineStyle(3);  
                 line1->SetLineWidth(1);  

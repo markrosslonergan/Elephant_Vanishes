@@ -527,6 +527,7 @@ int main(int argc, char* argv[])
     fitconfig.param.max_linesearch = 250;
     fitconfig.param.delta = 1e-6;
     for(const auto &[param_name, value]: fit_options) {
+        log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
         if(param_name == "epsilon") {
             fitconfig.param.epsilon = value;
         } else if(param_name == "delta") {
@@ -578,6 +579,20 @@ int main(int argc, char* argv[])
             fitconfig.n_localfit = value;
             if(fitconfig.n_localfit < 1) {
                 log<LOG_ERROR>(L"%1% || Expected to run at least 1 local fit point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
+        }else if(param_name == "n_swarm_particles") {
+            fitconfig.n_swarm_particles = value;
+            if(fitconfig.n_swarm_particles < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 PSO swarm particle point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
+        }else if(param_name == "n_swarm_iterations") {
+            fitconfig.n_swarm_iterations = value;
+            if(fitconfig.n_swarm_iterations < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 swarm_iterations point. Provided value is %2%.")
                     % __func__ % value;
                 return 1;
             }
@@ -639,7 +654,12 @@ int main(int argc, char* argv[])
         Eigen::VectorXf best_fit = fitter.best_fit;
         Eigen::MatrixXf post_covar = fitter.Covariance();
 
+        log<LOG_INFO>(L"%1% || Global Best Fit found at chi^2: %2% at param values:  %3% ") % __func__% chi2 % best_fit;
+
         // TODO: Not sure I understand this covariance matrix
+        size_t MCMCiter = 500'000;
+        size_t MCMCburn = 100'000;
+        log<LOG_INFO>(L"%1% || Starting a metropolis hastings chain to estimate the covariace matrix aroud the above best fit. Run and Burn is (%2%,%3%);") % __func__%MCMCiter % MCMCburn;
         Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
 
         Eigen::MatrixXf covmat = Eigen::MatrixXf::Constant(nparams, nparams, 0);
@@ -648,7 +668,7 @@ int main(int argc, char* argv[])
             covmat += (value-best_fit) * (value-best_fit).transpose();
             count += 1; 
         };
-        mh.run(100'000, 500'000, action);
+        mh.run(MCMCburn,MCMCiter, action);
 
         TH2D covhist("ch", "", nparams, 0, nparams, nparams, 0, nparams);
         for(size_t i = 0; i < nparams; ++i) {
@@ -666,7 +686,7 @@ int main(int argc, char* argv[])
         covhist.SetMinimum(-1);
         covhist.Draw("colz");
         c1.Print((final_output_tag+"_postfit_cov.pdf").c_str());
-        //std::cout << "Acceptance: " << (double)count / 5e4 << std::endl;
+        log<LOG_INFO>(L"%1% || MCMC acceptance is  %2%. ") % __func__% ((double)count /MCMCiter);
 
         std::string hname = "#chi^{2}/ndf = " + to_string(chi2) + "/" + to_string(config.m_num_bins_total_collapsed);
         PROspec cv = FillCVSpectrum(config, prop, true);
@@ -677,9 +697,14 @@ int main(int argc, char* argv[])
             post_hist.SetBinContent(i+1, bf.Spec()(i));
             pre_hist.SetBinContent(i+1, cv.Spec()(i));
         }
+        
+        log<LOG_INFO>(L"%1% || Finished the metropolis hastings chain ") % __func__;
+
         std::vector<TH1D> posteriors;
+        log<LOG_INFO>(L"%1% || Starting global getErrorBand() ") % __func__;
         std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs, binwidth_scale);
         Eigen::MatrixXf spline_covariance;
+        log<LOG_INFO>(L"%1% || Starting global getPostFitErrorBand() ") % __func__;
         std::unique_ptr<TGraphAsymmErrors> post_err_band = getPostFitErrorBand(config, prop, *metric_to_use, best_fit, posteriors, spline_covariance, binwidth_scale);
         
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
@@ -707,6 +732,8 @@ int main(int argc, char* argv[])
         }
         spline_cov.Draw("colz");
         c.Print((final_output_tag+"_postfit_nuisance_covariance.pdf").c_str());
+
+        log<LOG_INFO>(L"%1% ||  Beginning full PROfile ") % __func__;
 
         PROfile profile(config, metric_to_use->GetSysts(), metric_to_use->GetModel(), *metric_to_use, myseed, fitconfig, 
                 final_output_tag+"_PROfile", chi2, !systs_only_profile, nthread, best_fit,
