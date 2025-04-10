@@ -3,9 +3,12 @@
 
 #include "PROmetric.h"
 #include <Eigen/Eigen>
+#include <Eigen/src/Cholesky/LLT.h>
+#include <Eigen/src/Core/Matrix.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <numeric>
 #include <random>
 #include <optional>
 namespace PROfit {
@@ -180,6 +183,87 @@ struct simple_proposal {
     }
 };
 
+struct adaptive_proposal {
+    PROmetric &metric;
+    uint32_t seed;
+    Eigen::MatrixXf width;
+    std::vector<int> fixed;
+    std::mt19937 rng;
+    static constexpr bool has_tune = true;
+    std::vector<Eigen::VectorXf> proposed;
+    Eigen::VectorXf last_proposed;
+    Eigen::VectorXf mean;
+    Eigen::MatrixXf cov;
+    size_t tune_calls = 0;
+    float scale = 5.66;
+    float diag_scale = 0.01;
+    float beta = 0.05;
+    Eigen::MatrixXf diagL;
+
+    adaptive_proposal(PROmetric &metric, uint32_t seed, std::vector<int> fixed = {}) 
+        : metric(metric), seed(seed), fixed(fixed), rng(seed) {
+        int nparams = metric.GetModel().nparams + metric.GetSysts().GetNSplines();
+        scale /= nparams - fixed.size();
+        diag_scale /= nparams - fixed.size();
+        width = Eigen::MatrixXf::Identity(nparams, nparams);
+        mean = Eigen::VectorXf::Constant(nparams, 0);
+        cov = Eigen::MatrixXf::Identity(nparams, nparams);
+        Eigen::MatrixXf diag = Eigen::MatrixXf::Identity(nparams, nparams);
+        Eigen::LLT<Eigen::MatrixXf> llt(diag_scale * diag);
+        diagL = llt.matrixL();
+    }
+
+    Eigen::VectorXf operator()(Eigen::VectorXf &current) {
+        Eigen::VectorXf throw1 = current;
+        Eigen::VectorXf throw2 = current;
+        for(int i = 0; i < throw1.size(); ++i) {
+            if(std::find(fixed.begin(), fixed.end(), i) != std::end(fixed)) {
+                throw1(i) = 0;
+                throw2(i) = 0;
+            }
+            std::normal_distribution<float> nd(0, 1);
+            throw1(i) = nd(rng);
+            throw2(i) = nd(rng);
+        }
+        Eigen::LLT<Eigen::MatrixXf> llt(scale * width);
+        Eigen::MatrixXf L = llt.matrixL();
+        last_proposed = current + (1.0f - beta) * L * throw1 + beta * diagL * throw2;
+        return last_proposed;
+    }
+
+    float P(const Eigen::VectorXf &value, const Eigen::VectorXf &given) {
+        return 1;
+    }
+
+    bool within_bound(Eigen::VectorXf &value) {
+        int nparams = metric.GetModel().nparams;
+        for(int i = 0; i < value.size(); ++i) {
+            if(std::find(fixed.begin(), fixed.end(), i) != std::end(fixed)) continue;
+            if(i < nparams) {
+                if(value(i) > metric.GetModel().ub(i) || value(i) < metric.GetModel().lb(i))
+                    return false;
+            } else {
+                if(value(i) < metric.GetSysts().spline_lo[i-nparams] || value(i) > metric.GetSysts().spline_hi[i-nparams])
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    void tune(bool accepted) {
+        if(accepted) {
+            proposed.push_back(last_proposed);
+            mean = (mean * (proposed.size() - 1) + last_proposed) / proposed.size();
+            cov *= 0;
+            for(const auto &v: proposed)
+                cov += (v - mean) * (v - mean).transpose();
+            cov /= proposed.size();
+        }
+        if(tune_calls++ > 1000) {
+            width = cov;
+        }
+    }
+};
 }
 
 #endif
