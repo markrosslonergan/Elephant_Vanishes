@@ -65,6 +65,15 @@ struct simple_target {
     }
 };
 
+struct prior_only_target {
+    PROmetric &metric;
+
+    float operator()(Eigen::VectorXf &value) {
+        Eigen::VectorXf nuisance = value.segment(metric.GetModel().nparams, metric.GetSysts().GetNSplines());
+        return std::exp(-0.5f*metric.Pull(nuisance));
+    }
+};
+
 struct simple_proposal {
     PROmetric &metric;
     uint32_t seed;
