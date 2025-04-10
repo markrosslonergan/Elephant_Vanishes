@@ -22,10 +22,10 @@
 	<!--systs from detsystTree should have type spline-->
 	<!>
 	<!--use uncorrelated b1,b2,b3,b4 instead of correlated A1,A2,A3,A4-->
-	<allowlist type="spline" plotname="ZExp_b1">ZExpPCAWeighter_SBNNuSyst_ZExpPCA_multisigma_b1</allowlist>
-	<allowlist type="spline" plotname="ZExp_b2">ZExpPCAWeighter_SBNNuSyst_ZExpPCA_multisigma_b2</allowlist>
-	<allowlist type="spline" plotname="ZExp_b3">ZExpPCAWeighter_SBNNuSyst_ZExpPCA_multisigma_b3</allowlist>
-	<allowlist type="spline" plotname="ZExp_b4">ZExpPCAWeighter_SBNNuSyst_ZExpPCA_multisigma_b4</allowlist>
+	<allowlist type="spline" binning="truth" plotname="ZExp_b1">ZExpPCAWeighter_SBNNuSyst_ZExpPCA_multisigma_b1</allowlist>
+	<allowlist type="spline" binning="truth" plotname="ZExp_b2">ZExpPCAWeighter_SBNNuSyst_ZExpPCA_multisigma_b2</allowlist>
+	<allowlist type="spline" binning="truth" plotname="ZExp_b3">ZExpPCAWeighter_SBNNuSyst_ZExpPCA_multisigma_b3</allowlist>
+	<allowlist type="spline" binning="truth" plotname="ZExp_b4">ZExpPCAWeighter_SBNNuSyst_ZExpPCA_multisigma_b4</allowlist>
 	<!--use EITHER ZExpAVariationResponse OR ZExpA1CCQE + ZExpA2CCQE + ZExpA3CCQE + ZExpA4CCQE-->
 	<!--<allowlist type="covariance">GENIEReWeight_SBN_v1_multisim_ZExpAVariationResponse</allowlist> 
 	<allowlist type="spline" plotname="ZExpA1CCQE">GENIEReWeight_SBN_v1_multisigma_ZExpA1CCQE</allowlist>
@@ -39,9 +39,9 @@
 	<allowlist type="spline" plotname="EtaNCEL">GENIEReWeight_SBN_v1_multisigma_EtaNCEL</allowlist>-->
 	<!>
 	<!--use EITHER CCRESVariationResponse OR MaCCRES + MvCCRES-->
-	<allowlist type="covariance" plotname="CCRESVariationResponse">GENIEReWeight_SBN_v1_multisim_CCRESVariationResponse</allowlist>
-	<!--<allowlist type="spline" plotname="MaCCRES">GENIEReWeight_SBN_v1_multisigma_MaCCRES</allowlist>
-	<allowlist type="spline" plotname="MvCCRES">GENIEReWeight_SBN_v1_multisigma_MvCCRES</allowlist>-->
+    <!--<allowlist type="covariance" plotname="CCRESVariationResponse">GENIEReWeight_SBN_v1_multisim_CCRESVariationResponse</allowlist>-->
+	<allowlist type="spline" binning="truth" plotname="MaCCRES">GENIEReWeight_SBN_v1_multisigma_MaCCRES</allowlist>
+	<allowlist type="spline" binning="truth" plotname="MvCCRES">GENIEReWeight_SBN_v1_multisigma_MvCCRES</allowlist>
 	<!>
 	<!--use EITHER NCRESVariationResponse OR MaNCRES + MvNCRES-->
 	<allowlist type="covariance" plotname="NCRESVariationResponse">GENIEReWeight_SBN_v1_multisim_NCRESVariationResponse</allowlist>
@@ -74,9 +74,9 @@
 	<allowlist type="spline" plotname="MFP_N">GENIEReWeight_SBN_v1_multisigma_MFP_N</allowlist>-->
 	<!>
 	<!--important systs that we want to treat as spline systs-->
-	<allowlist type="spline" plotname="RPA_CCQE">GENIEReWeight_SBN_v1_multisigma_RPA_CCQE</allowlist>
-	<allowlist type="spline" plotname="CoulombCCQE">GENIEReWeight_SBN_v1_multisigma_CoulombCCQE</allowlist>
-	<allowlist type="spline" plotname="NormCCMEC">GENIEReWeight_SBN_v1_multisigma_NormCCMEC</allowlist>
+	<allowlist type="spline" binning="truth" plotname="RPA_CCQE">GENIEReWeight_SBN_v1_multisigma_RPA_CCQE</allowlist>
+	<allowlist type="spline" binning="truth" plotname="CoulombCCQE">GENIEReWeight_SBN_v1_multisigma_CoulombCCQE</allowlist>
+	<allowlist type="spline" binning="truth" plotname="NormCCMEC">GENIEReWeight_SBN_v1_multisigma_NormCCMEC</allowlist>
 	<!--<allowlist type="covariance" plotname="RPA_CCQE">GENIEReWeight_SBN_v1_multisim_RPA_CCQE</allowlist>
 	<allowlist type="covariance" plotname="CoulombCCQE">GENIEReWeight_SBN_v1_multisim_CoulombCCQE</allowlist>
 	<allowlist type="covariance" plotname="NormCCMEC">GENIEReWeight_SBN_v1_multisim_NormCCMEC</allowlist>-->
@@ -118,13 +118,13 @@
 	<allowlist type="spline" plotname="NonRESBGvpNC2pi">GENIEReWeight_SBN_v1_multisigma_NonRESBGvpNC2pi</allowlist>-->
 	<!>
 	<!--other spline systs from multisigmaTree-->
-	<allowlist type="spline" plotname="FrCEx_N">GENIEReWeight_SBN_v1_multisigma_FrCEx_N</allowlist>
-	<allowlist type="spline" plotname="FrCEx_pi">GENIEReWeight_SBN_v1_multisigma_FrCEx_pi</allowlist>
+	<allowlist type="spline" binning="truth" plotname="FrCEx_N">GENIEReWeight_SBN_v1_multisigma_FrCEx_N</allowlist>
+	<allowlist type="spline" binning="truth" plotname="FrCEx_pi">GENIEReWeight_SBN_v1_multisigma_FrCEx_pi</allowlist>
     <!--<allowlist type="spline" plotname="VecFFCCQEshape">GENIEReWeight_SBN_v1_multisigma_VecFFCCQEshape</allowlist>-->
-        <allowlist type="spline" plotname="DecayAngMEC">GENIEReWeight_SBN_v1_multisigma_DecayAngMEC</allowlist>
+        <allowlist type="spline" binning="truth" plotname="DecayAngMEC">GENIEReWeight_SBN_v1_multisigma_DecayAngMEC</allowlist>
         <!--<allowlist type="spline" plotname="Theta_Delta2Npi">GENIEReWeight_SBN_v1_multisigma_Theta_Delta2Npi</allowlist>-->
         <!--<allowlist type="spline" plotname="ThetaDelta2NRad">GENIEReWeight_SBN_v1_multisigma_ThetaDelta2NRad</allowlist>-->
-        <allowlist type="spline" plotname="XSecShape_CCMEC">GENIEReWeight_SBNNuSyst_GENIE_multisigma_XSecShape_CCMEC</allowlist>
+        <allowlist type="spline" binning="truth" plotname="XSecShape_CCMEC">GENIEReWeight_SBNNuSyst_GENIE_multisigma_XSecShape_CCMEC</allowlist>
 	<!>
 	<!-- use all flux covariance systs from multisimTree-->
 	<allowlist type="covariance">expskin_Flux</allowlist>  
@@ -142,15 +142,15 @@
 	<allowlist type="covariance">kzero_Flux</allowlist> 
 	<!>
 	<!--use all detector spline systs from detsystTree-->
-	<allowlist type="spline" plotname="CathodeBending">detector_var7_cathodebending_multisigma</allowlist>
-	<allowlist type="spline" plotname="HighLifetime">detector_var3_highlifetime_multisigma</allowlist>
-	<allowlist type="spline" plotname="TPCInd1Gain">detector_var1_tpcind1gain_multisigma</allowlist>
-	<allowlist type="spline" plotname="Ind1WireGap">detector_var6_ind1wiregap_multisigma</allowlist>
-	<allowlist type="spline" plotname="Recomb">detector_var2_reco_multisigma</allowlist>
-	<allowlist type="spline" plotname="NULLVariation">detector_var2_null_multisigma</allowlist>
-	<allowlist type="spline" plotname="SCINT">detector_var3_scint_multisigma</allowlist>
-	<allowlist type="spline" plotname="TPCCohNoise">detector_var5_tpccohnoise_multisigma</allowlist>
-	<allowlist type="spline" plotname="TPCIntNoise">detector_var4_tpcintnoise_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="CathodeBending">detector_var7_cathodebending_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="HighLifetime">detector_var3_highlifetime_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="TPCInd1Gain">detector_var1_tpcind1gain_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="Ind1WireGap">detector_var6_ind1wiregap_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="Recomb">detector_var2_reco_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="NULLVariation">detector_var4_null_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="SCINT">detector_var3_scint_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="TPCCohNoise">detector_var5_tpccohnoise_multisigma</allowlist>
+	<allowlist type="spline" binning="reco" plotname="TPCIntNoise">detector_var4_tpcintnoise_multisigma</allowlist>
 </variation_list>
 
 <model tag="numudis">

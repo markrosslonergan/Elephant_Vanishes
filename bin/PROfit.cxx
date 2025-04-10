@@ -1472,9 +1472,10 @@ getSplineGraphs(const PROsyst &systs, const PROconfig &config) {
         const PROsyst::Spline &spline = systs.GrabSpline(name);
         //using Spline = std::vector<std::vector<std::pair<float, std::array<float, 4>>>>;
         std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>> bin_graphs;
-        bin_graphs.reserve(config.m_num_truebins_total);
+        size_t nbins = systs.true_binned_spline[i] ? config.m_num_truebins_total : config.m_num_bins_total;
+        bin_graphs.reserve(nbins);
 
-        for(size_t j = 0; j < config.m_num_truebins_total; ++j) {
+        for(size_t j = 0; j < nbins; ++j) {
             const std::vector<std::pair<float, std::array<float, 4>>> &spline_for_bin = spline[j];
             std::unique_ptr<TGraph> curve = std::make_unique<TGraph>();
             std::unique_ptr<TGraph> fixed_pts = std::make_unique<TGraph>();

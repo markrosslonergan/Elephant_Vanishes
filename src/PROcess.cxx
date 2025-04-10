@@ -49,12 +49,18 @@ namespace PROfit {
                 float le = inprop.histLE[i];
                 float systw = 1;
                 for(int j = 0; j < shifts.size(); ++j) {
-                    systw *= insyst.GetSplineShift(j, shifts(j), i);
+                    if(insyst.true_binned_spline[j])
+                        systw *= insyst.GetSplineShift(j, shifts(j), i);
                 }
                 for(size_t j = 0; j < inmodel.model_functions.size(); ++j) {
                     float oscw = inmodel.model_functions[j](phys, le);
                     for(size_t k = 0; k < myspectrum.GetNbins(); ++k) {
-                        myspectrum.Fill(k, systw * oscw * inmodel.hists[j](i, k));
+                        float binsystw = systw;
+                        for(int l = 0; l < shifts.size(); ++l) {
+                            if(!insyst.true_binned_spline[l])
+                                binsystw *= insyst.GetSplineShift(l, shifts(l), k);
+                        }
+                        myspectrum.Fill(k, binsystw * oscw * inmodel.hists[j](i, k));
                     }
                 }
             }
@@ -63,15 +69,17 @@ namespace PROfit {
                 float oscw  =  inmodel.model_functions[inprop.model_rule[i]](phys, inprop.trueLE[i]);
                 float add_w = inprop.added_weights[i]; 
                 const int true_bin = inprop.true_bin_indices[i]; 
+                const int reco_bin = inprop.bin_indices[i];
 
                 float systw = 1;
                 for(int j = 0; j < shifts.size(); ++j) {
-                    systw *= insyst.GetSplineShift(j, shifts(j), true_bin);
+                    bool true_bin_w = insyst.true_binned_spline[j];
+                    systw *= insyst.GetSplineShift(j, shifts(j), true_bin_w ? true_bin : reco_bin);
                 }
 
                 float finalw = oscw * systw * add_w;
 
-                myspectrum.Fill(inprop.bin_indices[i], finalw);
+                myspectrum.Fill(reco_bin, finalw);
             }
         }
         return myspectrum;
@@ -86,10 +94,12 @@ namespace PROfit {
             float oscw  =  inmodel.model_functions[inprop.model_rule[i]](phys, inprop.trueLE[i]);
             float add_w = inprop.added_weights[i]; 
             const int true_bin = inprop.true_bin_indices[i]; 
+            const int reco_bin = inprop.bin_indices[i];
 
             float systw = 1;
             for(int j = 0; j < shifts.size(); ++j) {
-                systw *= insyst.GetSplineShift(j, shifts(j), true_bin);
+                bool true_bin_w = insyst.true_binned_spline[j];
+                systw *= insyst.GetSplineShift(j, shifts(j), true_bin_w ? true_bin : reco_bin);
             }
 
             float finalw = oscw * systw * add_w;
@@ -188,10 +198,16 @@ namespace PROfit {
             for(long int i = 0; i < inprop.hist.rows(); ++i) {
                 float systw = 1;
                 for(size_t j = 0; j < throws.size(); ++j) {
-                    systw *= insyst.GetSplineShift(j, throws[j], i);
+                    if(insyst.true_binned_spline[j])
+                        systw *= insyst.GetSplineShift(j, throws[j], i);
                 }
                 for(int k = 0; k < nbins; ++k) {
-                    spec(k) += systw * inprop.hist(i, k);
+                    float binsystw = systw;
+                    for(size_t l = 0; l < throws.size(); ++l) {
+                        if(!insyst.true_binned_spline[l])
+                            binsystw *= insyst.GetSplineShift(l, throws[l], k);
+                    }
+                    spec(k) += binsystw * inprop.hist(i, k);
                     cvspec(k) += inprop.hist(i, k);
                 }
             }
@@ -201,10 +217,16 @@ namespace PROfit {
                 const int true_bin = inprop.true_bin_indices[i]; 
                 float systw = 1;
                 for(size_t j = 0; j < throws.size(); ++j) {
-                    systw *= insyst.GetSplineShift(j, throws[j], true_bin);
+                    if(insyst.true_binned_spline[j])
+                        systw *= insyst.GetSplineShift(j, throws[j], true_bin);
                 }
-                float finalw = systw * add_w;
                 if(inprop.other_bin_indices[i][other_index] >= 0) {
+                    float binsystw = systw;
+                    for(size_t l = 0; l < throws.size(); ++l) {
+                        if(!insyst.true_binned_spline[l])
+                            binsystw *= insyst.GetSplineShift(l, throws[l], inprop.bin_indices[i]);
+                    }
+                    float finalw = binsystw * add_w;
                     spec(inprop.other_bin_indices[i][other_index]) += finalw;
                     cvspec(inprop.other_bin_indices[i][other_index]) += add_w;
                 }
@@ -235,19 +257,24 @@ namespace PROfit {
         static std::mt19937 rng{seed};
         std::normal_distribution<float> d;
         float spline_throw = d(rng);
+        bool true_bin_w = insyst.true_binned_spline[spline];
 
         if(other_index < 0) {
             for(long int i = 0; i < inprop.hist.rows(); ++i) {
-                float systw = insyst.GetSplineShift(spline, spline_throw, i);
+                float systw = 1.0;
+                if(true_bin_w) systw = insyst.GetSplineShift(spline, spline_throw, i);
                 for(int k = 0; k < nbins; ++k) {
-                    spec(k) += systw * inprop.hist(i, k);
+                    float binsystw = systw;
+                    if(!true_bin_w) binsystw *= insyst.GetSplineShift(spline, spline_throw, k);
+                    spec(k) += binsystw * inprop.hist(i, k);
                 }
             }
         } else {
             for(size_t i = 0; i<inprop.trueLE.size(); ++i){
                 float add_w = inprop.added_weights[i]; 
                 const int true_bin = inprop.true_bin_indices[i]; 
-                float systw = insyst.GetSplineShift(spline, spline_throw, true_bin);
+                const int reco_bin = inprop.true_bin_indices[i]; 
+                float systw = insyst.GetSplineShift(spline, spline_throw, true_bin_w ? true_bin : reco_bin);
                 float finalw = systw * add_w;
                 if(inprop.other_bin_indices[i][other_index] >= 0) {
                     spec(inprop.other_bin_indices[i][other_index]) += finalw;
