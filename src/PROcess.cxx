@@ -53,15 +53,15 @@ namespace PROfit {
                     binning == -2 || binning == -1 ? inprop.hist 
                                                    : inprop.other_hists[binning];
                 for(size_t k = 0; k < inconfig.m_num_bins_total; ++k) {
-                    if(binning == -1) systw *= insyst.GetSplineShift(i, shifts(i), k);
+                    if(binning == -1) systw(k) *= insyst.GetSplineShift(i, shifts(i), k);
                     else {
                         float val = 0, unweighted = 0;
                         for(long int j = 0; j < hist.rows(); ++j) {
-                            float binsystw = insyst.GetSplineShift(i, shifts(i), k);
+                            float binsystw = insyst.GetSplineShift(i, shifts(i), j);
                             val += binsystw * hist(j, k);
                             unweighted += hist(j,k);
                         }
-                        systw *= val/unweighted;
+                        if(unweighted > 0) systw(k) *= val/unweighted;
                     }
                 }
             }
@@ -216,15 +216,15 @@ namespace PROfit {
                     binning == -2 || binning == -1 ? inprop.hist 
                                                    : inprop.other_hists[binning];
                 for(int k = 0; k < nbins; ++k) {
-                    if(binning == -1) systw *= insyst.GetSplineShift(i, throws[i], k);
+                    if(binning == -1) systw(k) *= insyst.GetSplineShift(i, throws[i], k);
                     else {
                         float val = 0, unweighted = 0;
                         for(long int j = 0; j < hist.rows(); ++j) {
-                            float binsystw = insyst.GetSplineShift(i, throws[i], k);
+                            float binsystw = insyst.GetSplineShift(i, throws[i], j);
                             val += binsystw * hist(j, k);
                             unweighted += hist(j,k);
                         }
-                        systw *= val/unweighted;
+                        if(unweighted > 0) systw(k) *= val/unweighted;
                     }
                 }
             }
