@@ -7,6 +7,7 @@
 
 #include <Eigen/Eigen>
 
+#include <algorithm>
 #include <random>
 #include <vector>
 
@@ -45,22 +46,31 @@ namespace PROfit {
         Eigen::VectorXf shifts = params.segment(inmodel.nparams, params.size() - inmodel.nparams);
 
         if(binned) {
+            Eigen::VectorXf systw = Eigen::VectorXf::Constant(inconfig.m_num_bins_total, 1);
+            for(int i = 0; i < shifts.size(); ++i) {
+                int binning = insyst.spline_binnings[i];
+                const Eigen::MatrixXf &hist =
+                    binning == -2 || binning == -1 ? inprop.hist 
+                                                   : inprop.other_hists[binning];
+                for(size_t k = 0; k < inconfig.m_num_bins_total; ++k) {
+                    if(binning == -1) systw(k) *= insyst.GetSplineShift(i, shifts(i), k);
+                    else {
+                        float val = 0, unweighted = 0;
+                        for(long int j = 0; j < hist.rows(); ++j) {
+                            float binsystw = insyst.GetSplineShift(i, shifts(i), j);
+                            val += binsystw * hist(j, k);
+                            unweighted += hist(j,k);
+                        }
+                        if(unweighted > 0) systw(k) *= val/unweighted;
+                    }
+                }
+            }
             for(long int i = 0; i < inprop.hist.rows(); ++i) {
                 float le = inprop.histLE[i];
-                float systw = 1;
-                for(int j = 0; j < shifts.size(); ++j) {
-                    if(insyst.true_binned_spline[j])
-                        systw *= insyst.GetSplineShift(j, shifts(j), i);
-                }
                 for(size_t j = 0; j < inmodel.model_functions.size(); ++j) {
                     float oscw = inmodel.model_functions[j](phys, le);
                     for(size_t k = 0; k < myspectrum.GetNbins(); ++k) {
-                        float binsystw = systw;
-                        for(int l = 0; l < shifts.size(); ++l) {
-                            if(!insyst.true_binned_spline[l])
-                                binsystw *= insyst.GetSplineShift(l, shifts(l), k);
-                        }
-                        myspectrum.Fill(k, binsystw * oscw * inmodel.hists[j](i, k));
+                        myspectrum.Fill(k, systw(k) * oscw * inmodel.hists[j](i, k));
                     }
                 }
             }
@@ -68,13 +78,16 @@ namespace PROfit {
             for(size_t i = 0; i<inprop.trueLE.size(); ++i){
                 float oscw  =  inmodel.model_functions[inprop.model_rule[i]](phys, inprop.trueLE[i]);
                 float add_w = inprop.added_weights[i]; 
-                const int true_bin = inprop.true_bin_indices[i]; 
                 const int reco_bin = inprop.bin_indices[i];
 
                 float systw = 1;
                 for(int j = 0; j < shifts.size(); ++j) {
-                    bool true_bin_w = insyst.true_binned_spline[j];
-                    systw *= insyst.GetSplineShift(j, shifts(j), true_bin_w ? true_bin : reco_bin);
+                    int binning = insyst.spline_binnings[j];
+                    const int spline_bin = 
+                        binning == -2 ? inprop.true_bin_indices[i] :
+                        binning == -1 ? inprop.bin_indices[i]
+                                      : inprop.other_bin_indices[i][binning];
+                    systw *= insyst.GetSplineShift(j, shifts[j], spline_bin);
                 }
 
                 float finalw = oscw * systw * add_w;
@@ -93,13 +106,14 @@ namespace PROfit {
         for(size_t i = 0; i<inprop.trueLE.size(); ++i){
             float oscw  =  inmodel.model_functions[inprop.model_rule[i]](phys, inprop.trueLE[i]);
             float add_w = inprop.added_weights[i]; 
-            const int true_bin = inprop.true_bin_indices[i]; 
-            const int reco_bin = inprop.bin_indices[i];
-
             float systw = 1;
             for(int j = 0; j < shifts.size(); ++j) {
-                bool true_bin_w = insyst.true_binned_spline[j];
-                systw *= insyst.GetSplineShift(j, shifts(j), true_bin_w ? true_bin : reco_bin);
+                int binning = insyst.spline_binnings[j];
+                const int spline_bin = 
+                    binning == -2 ? inprop.true_bin_indices[i] :
+                    binning == -1 ? inprop.bin_indices[i]
+                                  : inprop.other_bin_indices[i][binning];
+                systw *= insyst.GetSplineShift(j, shifts[j], spline_bin);
             }
 
             float finalw = oscw * systw * add_w;
@@ -195,38 +209,45 @@ namespace PROfit {
 
 
         if(other_index < 0) {
-            for(long int i = 0; i < inprop.hist.rows(); ++i) {
-                float systw = 1;
-                for(size_t j = 0; j < throws.size(); ++j) {
-                    if(insyst.true_binned_spline[j])
-                        systw *= insyst.GetSplineShift(j, throws[j], i);
-                }
+            Eigen::VectorXf systw = Eigen::VectorXf::Constant(nbins, 1);
+            for(size_t i = 0; i < throws.size(); ++i) {
+                int binning = insyst.spline_binnings[i];
+                const Eigen::MatrixXf &hist =
+                    binning == -2 || binning == -1 ? inprop.hist 
+                                                   : inprop.other_hists[binning];
                 for(int k = 0; k < nbins; ++k) {
-                    float binsystw = systw;
-                    for(size_t l = 0; l < throws.size(); ++l) {
-                        if(!insyst.true_binned_spline[l])
-                            binsystw *= insyst.GetSplineShift(l, throws[l], k);
+                    if(binning == -1) systw(k) *= insyst.GetSplineShift(i, throws[i], k);
+                    else {
+                        float val = 0, unweighted = 0;
+                        for(long int j = 0; j < hist.rows(); ++j) {
+                            float binsystw = insyst.GetSplineShift(i, throws[i], j);
+                            val += binsystw * hist(j, k);
+                            unweighted += hist(j,k);
+                        }
+                        if(unweighted > 0) systw(k) *= val/unweighted;
                     }
-                    spec(k) += binsystw * inprop.hist(i, k);
+                }
+            }
+            for(long int i = 0; i < inprop.hist.rows(); ++i) {
+                for(int k = 0; k < nbins; ++k) {
+                    spec(k) += systw(k) * inprop.hist(i, k);
                     cvspec(k) += inprop.hist(i, k);
                 }
             }
         } else {
             for(size_t i = 0; i<inprop.trueLE.size(); ++i){
                 float add_w = inprop.added_weights[i]; 
-                const int true_bin = inprop.true_bin_indices[i]; 
                 float systw = 1;
                 for(size_t j = 0; j < throws.size(); ++j) {
-                    if(insyst.true_binned_spline[j])
-                        systw *= insyst.GetSplineShift(j, throws[j], true_bin);
+                    int binning = insyst.spline_binnings[j];
+                    const int spline_bin = 
+                        binning == -2 ? inprop.true_bin_indices[i] :
+                        binning == -1 ? inprop.bin_indices[i]
+                                      : inprop.other_bin_indices[i][binning];
+                    systw *= insyst.GetSplineShift(j, throws[j], spline_bin);
                 }
                 if(inprop.other_bin_indices[i][other_index] >= 0) {
-                    float binsystw = systw;
-                    for(size_t l = 0; l < throws.size(); ++l) {
-                        if(!insyst.true_binned_spline[l])
-                            binsystw *= insyst.GetSplineShift(l, throws[l], inprop.bin_indices[i]);
-                    }
-                    float finalw = binsystw * add_w;
+                    float finalw = systw * add_w;
                     spec(inprop.other_bin_indices[i][other_index]) += finalw;
                     cvspec(inprop.other_bin_indices[i][other_index]) += add_w;
                 }
@@ -257,24 +278,29 @@ namespace PROfit {
         static std::mt19937 rng{seed};
         std::normal_distribution<float> d;
         float spline_throw = d(rng);
-        bool true_bin_w = insyst.true_binned_spline[spline];
+        int binning = insyst.spline_binnings[spline];
 
         if(other_index < 0) {
-            for(long int i = 0; i < inprop.hist.rows(); ++i) {
+            const Eigen::MatrixXf &hist =
+                binning == -2 || binning == -1 ? inprop.hist 
+                                               : inprop.other_hists[binning];
+            for(long int i = 0; i < hist.rows(); ++i) {
                 float systw = 1.0;
-                if(true_bin_w) systw = insyst.GetSplineShift(spline, spline_throw, i);
+                if(binning != -1) systw = insyst.GetSplineShift(spline, spline_throw, i);
                 for(int k = 0; k < nbins; ++k) {
                     float binsystw = systw;
-                    if(!true_bin_w) binsystw *= insyst.GetSplineShift(spline, spline_throw, k);
-                    spec(k) += binsystw * inprop.hist(i, k);
+                    if(binning == -1) binsystw *= insyst.GetSplineShift(spline, spline_throw, k);
+                    spec(k) += binsystw * hist(i, k);
                 }
             }
         } else {
             for(size_t i = 0; i<inprop.trueLE.size(); ++i){
                 float add_w = inprop.added_weights[i]; 
-                const int true_bin = inprop.true_bin_indices[i]; 
-                const int reco_bin = inprop.true_bin_indices[i]; 
-                float systw = insyst.GetSplineShift(spline, spline_throw, true_bin_w ? true_bin : reco_bin);
+                const int spline_bin = 
+                    binning == -2 ? inprop.true_bin_indices[i] :
+                    binning == -1 ? inprop.bin_indices[i]
+                                  : inprop.other_bin_indices[i][binning];
+                float systw = insyst.GetSplineShift(spline, spline_throw, spline_bin);
                 float finalw = systw * add_w;
                 if(inprop.other_bin_indices[i][other_index] >= 0) {
                     spec(inprop.other_bin_indices[i][other_index]) += finalw;

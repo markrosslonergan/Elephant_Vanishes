@@ -32,6 +32,7 @@ namespace PROfit{
                     ar & true_bin_indices;
                     ar & other_bin_indices;
                     ar & hist;
+                    ar & other_hists;
                     ar & histLE;
                     ar & mcStatErr;
                     ar & otherMCStatErr;
@@ -73,6 +74,7 @@ namespace PROfit{
             std::vector<float> pcosth;
             std::vector<std::vector<int>> other_bin_indices;
             Eigen::MatrixXf    hist;
+            std::vector<Eigen::MatrixXf> other_hists;
             Eigen::VectorXf    histLE;
             Eigen::VectorXf    mcStatErr;
             std::vector<Eigen::VectorXf> otherMCStatErr;

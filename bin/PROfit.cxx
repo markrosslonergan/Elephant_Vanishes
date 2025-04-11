@@ -662,8 +662,8 @@ int main(int argc, char* argv[])
         log<LOG_INFO>(L"%1% || Global Best Fit found at chi^2: %2% at param values:  %3% ") % __func__% chi2 % best_fit;
 
         // TODO: Not sure I understand this covariance matrix
-        size_t MCMCiter = 500'000;
-        size_t MCMCburn = 100'000;
+        size_t MCMCiter = 50'000;
+        size_t MCMCburn = 10'000;
         log<LOG_INFO>(L"%1% || Starting a metropolis hastings chain to estimate the covariace matrix aroud the above best fit. Run and Burn is (%2%,%3%);") % __func__%MCMCiter % MCMCburn;
         Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
 
@@ -1477,7 +1477,10 @@ getSplineGraphs(const PROsyst &systs, const PROconfig &config) {
         const PROsyst::Spline &spline = systs.GrabSpline(name);
         //using Spline = std::vector<std::vector<std::pair<float, std::array<float, 4>>>>;
         std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>> bin_graphs;
-        size_t nbins = systs.true_binned_spline[i] ? config.m_num_truebins_total : config.m_num_bins_total;
+        size_t nbins = 
+            systs.spline_binnings[i] == -2 ? config.m_num_truebins_total :
+            systs.spline_binnings[i] == -1 ? config.m_num_bins_total
+                                           : config.m_num_other_bins_total[systs.spline_binnings[i]];
         bin_graphs.reserve(nbins);
 
         for(size_t j = 0; j < nbins; ++j) {
@@ -1581,7 +1584,7 @@ std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, 
         Eigen::VectorXf diff = splines-splines_bf;
         post_covar += diff * diff.transpose();
     };
-    mh.run(100'000, 500'000, action);
+    mh.run(10'000, 50'000, action);
     post_covar /= accepted;
 
     //TODO: Only works with 1 mode/detector/channel
