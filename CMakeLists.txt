@@ -6,6 +6,7 @@ project (
     VERSION 0.1
     DESCRIPTION "A PROfessional PROfitable PROtractable Fitter"
     LANGUAGES CXX)
+message(STATUS "Building PROfit version: ${PROJECT_VERSION}")
 
 include(FetchContent)
 include(ExternalProject)
@@ -165,6 +166,9 @@ install(
   DESTINATION  ${CMAKE_INSTALL_PREFIX}/include/sbnanaobj/StandardRecord/
   FILES_MATCHING PATTERN "*.h"
 )
+
+configure_file(${CMAKE_SOURCE_DIR}/inc/PROversion.h.in ${CMAKE_SOURCE_DIR}/inc/PROversion.h)
+
 
 # The compiled library code lives inside here
 add_subdirectory(src)

@@ -16,6 +16,7 @@
 #include "PROMCMC.h"
 #include "PROtocall.h"
 #include "PROseed.h"
+#include "PROversion.h"
 
 #include "CLI11.h"
 #include "LBFGSB.h"
