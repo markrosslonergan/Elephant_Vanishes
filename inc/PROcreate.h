@@ -59,7 +59,7 @@ namespace PROfit{
         //std::vector<PROspec> m_multi_spec;
 
         // pointer to cv spectrum and multi-universe spectrum from systematic variation
-        bool true_bins = false;
+        int binning = -1;
         std::shared_ptr<PROspec> p_cv;	
         std::vector<std::shared_ptr<PROspec>> p_multi_spec;
 
@@ -77,7 +77,7 @@ namespace PROfit{
             ar & knob_index;
             ar & index;
             ar & spline_coeffs;
-            ar & true_bins;
+            ar & binning;
             ar & p_cv;
             ar & p_multi_spec;  
             ar & hash;

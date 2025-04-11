@@ -20,7 +20,7 @@ namespace PROfit {
                 spline_names.push_back(syst.systname); 
                 spline_lo.push_back(syst.knobval[0]);
                 spline_hi.push_back(syst.knobval.back());
-                true_binned_spline.push_back(syst.true_bins);
+                spline_binnings.push_back(syst.binning);
             } else if(syst.mode == "covariance") {
                 this->CreateMatrix(syst);
                 covar_names.push_back(syst.systname);
@@ -53,7 +53,7 @@ namespace PROfit {
                 ret.splines.push_back(splines[idx]);
                 ret.spline_hi.push_back(spline_hi[idx]);
                 ret.spline_lo.push_back(spline_lo[idx]);
-                ret.true_binned_spline.push_back(true_binned_spline[idx]);
+                ret.spline_binnings.push_back(spline_binnings[idx]);
                 break;
             case SystType::Covariance:
                 ret.syst_map[name] = std::make_pair(ret.covmat.size(), SystType::Covariance);
@@ -84,7 +84,7 @@ namespace PROfit {
                 ret.splines.push_back(splines[idx]);
                 ret.spline_hi.push_back(spline_hi[idx]);
                 ret.spline_lo.push_back(spline_lo[idx]);
-                ret.true_binned_spline.push_back(true_binned_spline[idx]);
+                ret.spline_binnings.push_back(spline_binnings[idx]);
                 break;
             case SystType::Covariance:
                 ret.syst_map[name] = std::make_pair(ret.covmat.size(), SystType::Covariance);
@@ -539,9 +539,13 @@ namespace PROfit {
 
     PROspec PROsyst::GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, std::string name, float shift) const {
         int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        int binning = spline_binnings[syst_map.at(name).first];
         PROspec ret(nbins);
         for(size_t i = 0; i < prop.trueLE.size(); ++i) {
-            const int spline_bin = true_binned_spline[syst_map.at(name).first] ? prop.true_bin_indices[i] : prop.bin_indices[i];
+            const int spline_bin = 
+                binning == -2 ? prop.true_bin_indices[i] :
+                binning == -1 ? prop.bin_indices[i]
+                              : prop.other_bin_indices[i][binning];
             const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
             ret.Fill(reco_bin, GetSplineShift(name, shift, spline_bin) * prop.added_weights[i]);
         }
@@ -550,9 +554,13 @@ namespace PROfit {
 
     PROspec PROsyst::GetSplineShiftedSpectrum(const PROconfig& config, const PROpeller& prop, int syst_num, float shift) const {
         int nbins = other_index < 0 ? config.m_num_bins_total : config.m_num_other_bins_total[other_index];
+        int binning = spline_binnings[syst_num];
         PROspec ret(nbins);
         for(size_t i = 0; i < prop.trueLE.size(); ++i) {
-            const int spline_bin = true_binned_spline[syst_num] ? prop.true_bin_indices[i] : prop.bin_indices[i];
+            const int spline_bin = 
+                binning == -2 ? prop.true_bin_indices[i] :
+                binning == -1 ? prop.bin_indices[i]
+                              : prop.other_bin_indices[i][binning];
             const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
             ret.Fill(reco_bin, GetSplineShift(syst_num, shift, spline_bin) * prop.added_weights[i]);
         }
@@ -567,7 +575,11 @@ namespace PROfit {
             const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
             float weight = 1;
             for(size_t j = 0; j < names.size(); ++j) {
-                const int spline_bin = true_binned_spline[syst_map.at(names[j]).first] ? prop.true_bin_indices[i] : prop.bin_indices[i];
+                int binning = spline_binnings[syst_map.at(names[j]).first];
+                const int spline_bin = 
+                    binning == -2 ? prop.true_bin_indices[i] :
+                    binning == -1 ? prop.bin_indices[i]
+                                  : prop.other_bin_indices[i][binning];
                 weight *= GetSplineShift(names[j], shifts[j], spline_bin);
             }
             ret.Fill(reco_bin, weight * prop.added_weights[i]);
@@ -583,7 +595,11 @@ namespace PROfit {
             const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
             float weight = 1;
             for(size_t j = 0; j < syst_nums.size(); ++j) {
-                const int spline_bin = true_binned_spline[syst_nums[j]] ? prop.true_bin_indices[i] : prop.bin_indices[i];
+                int binning = spline_binnings[syst_nums[j]];
+                const int spline_bin = 
+                    binning == -2 ? prop.true_bin_indices[i] :
+                    binning == -1 ? prop.bin_indices[i]
+                                  : prop.other_bin_indices[i][binning];
                 weight *= GetSplineShift(syst_nums[j], shifts[j], spline_bin);
             }
             ret.Fill(reco_bin, weight * prop.added_weights[i]);
@@ -599,7 +615,11 @@ namespace PROfit {
             const int reco_bin = other_index < 0 ? prop.bin_indices[i] : prop.other_bin_indices[other_index][i];
             float weight = 1;
             for(size_t j = 0; j < shifts.size(); ++j) {
-                const int spline_bin = true_binned_spline[j] ? prop.true_bin_indices[i] : prop.bin_indices[i];
+                int binning = spline_binnings[j];
+                const int spline_bin = 
+                    binning == -2 ? prop.true_bin_indices[i] :
+                    binning == -1 ? prop.bin_indices[i]
+                                  : prop.other_bin_indices[i][binning];
                 weight *= GetSplineShift(j, shifts[j], spline_bin);
             }
             ret.Fill(reco_bin, weight * prop.added_weights[i]);

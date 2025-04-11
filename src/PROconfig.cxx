@@ -1,5 +1,7 @@
 #include "PROconfig.h"
 #include "PROlog.h"
+#include <_ctype.h>
+#include <numeric>
 using namespace PROfit;
 
 
@@ -768,10 +770,33 @@ int PROconfig::LoadFromXML(const std::string &filename){
                 m_mcgen_variation_type_map[wt] = variation_type;
                 m_mcgen_variation_allowlist.push_back(wt);
                 m_mcgen_variation_plotname_map[wt] = plot_name ? plot_name : wt;
-                m_mcgen_variation_truebinned_map[wt] = binning ? strcmp(binning, "truth") == 0 : false;
-                if(binning && strcmp(binning, "truth") != 0 && strcmp(binning, "reco") != 0)
+                if(!binning || strcmp(binning, "reco") == 0) {
+                    m_mcgen_variation_binning_map[wt] = -1;
+                } else if(strcmp(binning, "truth") == 0) {
+                    m_mcgen_variation_binning_map[wt] = -2;
+                } else if(strncmp(binning, "other", 5) == 0) {
+                    size_t l = strlen(binning);
+                    bool all_numbers = true;
+                    for(size_t i = 5; i < l; ++i) {
+                        if(!isnumber(binning[i])) {
+                            all_numbers = false;
+                            break;
+                        }
+                    }
+                    if(all_numbers) {
+                        int binning_num;
+                        sscanf(binning, "other%i", &binning_num);
+                        m_mcgen_variation_binning_map[wt] = binning_num;
+                    } else {
+                        log<LOG_WARNING>(L"%1% || Unrecognized binning '%2%' for systematic %3%. Defaulting to reco bins.") 
+                            % __func__ % binning % wt.c_str();
+                        m_mcgen_variation_binning_map[wt] = -1;
+                    }
+                } else {
                     log<LOG_WARNING>(L"%1% || Unrecognized binning '%2%' for systematic %3%. Defaulting to reco bins.") 
                         % __func__ % binning % wt.c_str();
+                    m_mcgen_variation_binning_map[wt] = -1;
+                }
                 log<LOG_DEBUG>(L"%1% || Allowlisting variations: %2%") % __func__ % wt.c_str() ;
                 pAllowList = pAllowList->NextSiblingElement("allowlist");
             }
