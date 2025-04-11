@@ -85,7 +85,7 @@ namespace PROfit{
                 syst = &new_syst;
             }
             
-            float Pull(const Eigen::VectorXf &systs);
+            virtual float Pull(const Eigen::VectorXf &systs);
 
             void fixSpline(int fix, float valin);
 

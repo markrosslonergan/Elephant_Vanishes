@@ -161,7 +161,8 @@ std::map<std::string, std::unique_ptr<TH1D>> getCVHists(const PROspec & spec, co
 std::map<std::string, std::unique_ptr<TH2D>> covarianceTH2D(const PROsyst &syst, const PROconfig &config, const PROspec &cv);
 std::map<std::string, std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>>> getSplineGraphs(const PROsyst &systs, const PROconfig &config);
 std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, bool scale = false, int other_index = -1);
-std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, bool scale = false);
+template<class T, class P>
+std::unique_ptr<TGraphAsymmErrors> getMCMCErrorBand(Metropolis<T, P> met, size_t burnin, size_t iterations, const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, bool scale = false);
 
 enum class PlotOptions {
     Default = 0,
@@ -216,6 +217,7 @@ int main(int argc, char* argv[])
     std::map<std::string, float> injected_systs;
     std::vector<std::string> syst_list, systs_excluded;
 
+    bool MCMC_prefit_errors = false;
     bool systs_only_profile = false;
 
     float xlo, xhi, ylo, yhi;
@@ -235,6 +237,9 @@ int main(int argc, char* argv[])
     std::vector<TH2D*> weighthists;
 
     size_t nuniv;
+
+    size_t MCMCiter = 50'000;
+    size_t MCMCburn = 10'000;
 
     //Global Arguments for all PROfit enables subcommands.
     app.add_option("-x,--xml", xmlname, "Input PROfit XML configuration file.")->required();
@@ -288,6 +293,7 @@ int main(int argc, char* argv[])
     //PROfile, make N profile'd chi^2 for each physics and nuisence parameters
     CLI::App *profile_command = app.add_subcommand("profile", "Make a 1D profiled chi2 for each physics and nuisence parameter.");
     profile_command->add_flag("--syst-only", systs_only_profile, "Profile over nuisance parameters only");
+    profile_command->add_flag("--mcmc-prefit", MCMC_prefit_errors, "Use MCMC to sample the systematic priors for the pre-fit error band.");
 
     //PROplot, plot things
     CLI::App *proplot_command = app.add_subcommand("plot", "Make plots of CV, or injected point with error bars and covariance.");
@@ -601,6 +607,16 @@ int main(int argc, char* argv[])
                     % __func__ % value;
                 return 1;
             }
+        }else if(param_name == "MCMC-Burnin") {
+            MCMCburn = value;
+            if(MCMCburn < 1) {
+                log<LOG_WARNING>(L"%1% || Warning: Running without any burnin for MCMC.");
+            }
+        }else if(param_name == "MCMC-Iterations") {
+            MCMCiter = value;
+            if(MCMCiter < 1) {
+                log<LOG_ERROR>(L"%1% || Requested to run MCMC with no iterations.");
+            }
         } else {
             log<LOG_WARNING>(L"%1% || Unrecognized LBFGSB parameter %2%. Will ignore.") 
                 % __func__ % param_name.c_str();
@@ -662,8 +678,6 @@ int main(int argc, char* argv[])
         log<LOG_INFO>(L"%1% || Global Best Fit found at chi^2: %2% at param values:  %3% ") % __func__% chi2 % best_fit;
 
         // TODO: Not sure I understand this covariance matrix
-        size_t MCMCiter = 50'000;
-        size_t MCMCburn = 10'000;
         log<LOG_INFO>(L"%1% || Starting a metropolis hastings chain to estimate the covariace matrix aroud the above best fit. Run and Burn is (%2%,%3%);") % __func__%MCMCiter % MCMCburn;
         Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
 
@@ -676,14 +690,19 @@ int main(int argc, char* argv[])
         mh.run(MCMCburn,MCMCiter, action);
 
         TH2D covhist("ch", "", nparams, 0, nparams, nparams, 0, nparams);
+        TH2D physhist("ph","", nparams, 0, nparams, nphys, 0, nphys);
         for(size_t i = 0; i < nparams; ++i) {
             std::string label = i < metric_to_use->GetModel().nparams 
                 ? metric_to_use->GetModel().pretty_param_names[i]
                 : config.m_mcgen_variation_plotname_map[metric_to_use->GetSysts().spline_names[i-metric_to_use->GetModel().nparams]].c_str();
             covhist.GetXaxis()->SetBinLabel(i+1, label.c_str());
             covhist.GetYaxis()->SetBinLabel(i+1, label.c_str());
+            physhist.GetXaxis()->SetBinLabel(i+1, label.c_str());
+            if(i < metric_to_use->GetModel().nparams) physhist.GetYaxis()->SetBinLabel(i+1, label.c_str());
             for(size_t j = 0; j < nparams; ++j) {
                 covhist.SetBinContent(i+1, j+1, covmat(i,j)/count);
+                if(j < metric_to_use->GetModel().nparams)
+                    physhist.SetBinContent(i+1, j+1, covmat(i,j)/count);
             }
         }
         TCanvas c1;
@@ -691,6 +710,8 @@ int main(int argc, char* argv[])
         covhist.SetMinimum(-1);
         covhist.Draw("colz");
         c1.Print((final_output_tag+"_postfit_cov.pdf").c_str());
+        physhist.Draw("colz");
+        c1.Print("phys_cov.pdf");
         log<LOG_INFO>(L"%1% || MCMC acceptance is  %2%. ") % __func__% ((double)count /MCMCiter);
 
         std::string hname = "#chi^{2}/ndf = " + to_string(chi2) + "/" + to_string(config.m_num_bins_total_collapsed);
@@ -705,12 +726,22 @@ int main(int argc, char* argv[])
         
         log<LOG_INFO>(L"%1% || Finished the metropolis hastings chain ") % __func__;
 
-        std::vector<TH1D> posteriors;
+        std::vector<TH1D> priors, posteriors;
+        Eigen::MatrixXf prior_covariance, spline_covariance;
+        // Fix physics parameters
+        std::vector<int> fixed_pars;
+        for(size_t i = 0; i < metric_to_use->GetModel().nparams; ++i) fixed_pars.push_back(i);
+
         log<LOG_INFO>(L"%1% || Starting global getErrorBand() ") % __func__;
-        std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs, binwidth_scale);
-        Eigen::MatrixXf spline_covariance;
+        Metropolis mh_pre(prior_only_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng), 0.2, fixed_pars), best_fit, dseed(PROseed::global_rng));
+        std::unique_ptr<TGraphAsymmErrors> err_band = 
+            MCMC_prefit_errors
+            ? getMCMCErrorBand(mh_pre, MCMCburn, MCMCiter, config, prop, *metric_to_use, best_fit, priors, prior_covariance)
+            : getErrorBand(config, prop, systs, binwidth_scale);
+
+        Metropolis mh_post(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng), 0.2, fixed_pars), best_fit, dseed(PROseed::global_rng));
         log<LOG_INFO>(L"%1% || Starting global getPostFitErrorBand() ") % __func__;
-        std::unique_ptr<TGraphAsymmErrors> post_err_band = getPostFitErrorBand(config, prop, *metric_to_use, best_fit, posteriors, spline_covariance, binwidth_scale);
+        std::unique_ptr<TGraphAsymmErrors> post_err_band = getMCMCErrorBand(mh_post, MCMCburn, MCMCiter, config, prop, *metric_to_use, best_fit, posteriors, spline_covariance, binwidth_scale);
         
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
         chi2text.AddText(hname.c_str());
@@ -1550,15 +1581,8 @@ std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const P
     return ret;
 }
 
-std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, bool scale) {
-    // Fix physics parameters
-    std::vector<int> fixed_pars;
-    for(size_t i = 0; i < metric.GetModel().nparams; ++i) fixed_pars.push_back(i);
-
-    std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
-
-    Metropolis mh(simple_target{metric}, simple_proposal(metric, dseed(PROseed::global_rng), 0.2, fixed_pars), best_fit, dseed(PROseed::global_rng));
-
+template<class T, class P>
+std::unique_ptr<TGraphAsymmErrors> getMCMCErrorBand(Metropolis<T,P> mh, size_t burnin, size_t iterations, const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, bool scale) {
     for(size_t i = 0; i < metric.GetSysts().GetNSplines(); ++i)
         posteriors.emplace_back("", (";"+config.m_mcgen_variation_plotname_map.at(metric.GetSysts().spline_names[i])).c_str(), 60, -3, 3);
 
@@ -1584,7 +1608,7 @@ std::unique_ptr<TGraphAsymmErrors> getPostFitErrorBand(const PROconfig &config, 
         Eigen::VectorXf diff = splines-splines_bf;
         post_covar += diff * diff.transpose();
     };
-    mh.run(10'000, 50'000, action);
+    mh.run(burnin, iterations, action);
     post_covar /= accepted;
 
     //TODO: Only works with 1 mode/detector/channel

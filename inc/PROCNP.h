@@ -73,7 +73,7 @@ namespace PROfit{
                 syst = &new_syst;
             }
 
-            float Pull(const Eigen::VectorXf &systs);
+            virtual float Pull(const Eigen::VectorXf &systs);
 
             float getSingleChannelChi(size_t channel_index);
 
