@@ -146,12 +146,16 @@
     <allowlist type="spline" binning="reco" plotname="HighLifetime">detector_var3_highlifetime_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="TPCInd1Gain">detector_var1_tpcind1gain_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="Ind1WireGap">detector_var6_ind1wiregap_multisigma</allowlist>
-    <allowlist type="spline" binning="reco" plotname="Reco">detector_var2_reco_multisigma</allowlist>
-    <allowlist type="spline" binning="reco" plotname="NULLVariation">detector_var2_null_multisigma</allowlist>
+    <allowlist type="spline" binning="reco" plotname="Recomb">detector_var2_reco_multisigma</allowlist>
+    <allowlist type="spline" binning="reco" plotname="NULLVariation">detector_var4_null_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="SCINT">detector_var3_scint_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="TPCCohNoise">detector_var5_tpccohnoise_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="TPCIntNoise">detector_var4_tpcintnoise_multisigma</allowlist>
-    <allowlist type="spline" binning="reco" plotname="TPCYZNonUniform">detector_var10_tpcyznonuniformity_multisigma</allowlist>
+    <allowlist type="spline" binning="reco" plotname="TPCYZNonUni">detector_var10_tpcyznonuniformity_multisigma</allowlist>
+    <allowlist type="spline" binning="reco" plotname="ExtraCathBen">detector_var8_addlcathodebending_multisigma</allowlist>
+    <allowlist type="spline" binning="reco" plotname="ExtraWireGap">detector_var9_addlwiregap_multisigma</allowlist>
+    <allowlist type="spline" binning="reco" plotname="TrigEff">detector_var11_trigeff_recoE_multisigma</allowlist>
+    <allowlist type="spline" binning="reco" plotname="Containment">detector_var12_containment_multisigma</allowlist>
 
     <!--Extra normalization systematics-->
     <allowlist type="norm" binning="reco" plotname="FluxNorm">nu_ICARUS_numu_n:0.02</allowlist>
@@ -164,7 +168,7 @@
 </model>
 
 
-<MCFile treename="events/selectedNu" filename="/exp/icarus/data/users/jzettle/PROfit_trees/selected_events_withyz.root" scale = "1.0" pot="1.74e20"> 
+<MCFile treename="events/selectedNu" filename="/exp/icarus/app/users/jzettle/PROfit/Elephant_Vanishes/selected_events_fullsuite.root" scale = "1.0" pot="1.74e20"> 
     <friend treename="events/multisigmaTree" />
     <friend treename="events/multisimTree" />
     <friend treename="events/detsystTree" />
@@ -197,7 +201,7 @@
         />
 </MCFile>
 
-<MCFile treename="events/selectedCos" filename="/exp/icarus/data/users/jzettle/PROfit_trees/selected_events_withyz.root" scale = "1.0" pot="1.74e20"> 
+<MCFile treename="events/selectedCos" filename="/exp/icarus/app/users/jzettle/PROfit/Elephant_Vanishes/selected_events_fullsuite.root" scale = "1.0" pot="1.74e20"> 
     <branch
         associated_subchannel = "nu_ICARUS_numu_cos"
         name                  = "recoE"
