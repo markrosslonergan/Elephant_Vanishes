@@ -1,6 +1,6 @@
 #include "PROconfig.h"
 #include "PROlog.h"
-#include <_ctype.h>
+#include <ctype.h>
 #include <numeric>
 using namespace PROfit;
 
@@ -778,7 +778,7 @@ int PROconfig::LoadFromXML(const std::string &filename){
                     size_t l = strlen(binning);
                     bool all_numbers = true;
                     for(size_t i = 5; i < l; ++i) {
-                        if(!isnumber(binning[i])) {
+                        if(!isdigit(binning[i])) {
                             all_numbers = false;
                             break;
                         }
