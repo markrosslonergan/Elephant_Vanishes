@@ -16,6 +16,7 @@
 #include "PROMCMC.h"
 #include "PROtocall.h"
 #include "PROseed.h"
+#include "PROversion.h"
 
 #include "CLI11.h"
 #include "LBFGSB.h"
@@ -312,6 +313,10 @@ int main(int argc, char* argv[])
 
     log<LOG_INFO>(L" %1% ") % getIcon().c_str()  ;
     std::string final_output_tag =analysis_tag +"_"+output_tag;
+    
+    log<LOG_INFO>(L"%1% || ##################################################################") % __func__  ;
+    log<LOG_INFO>(L"%1% || ####################### PROfit version v%2% ######################") % __func__ % PROJECT_VERSION_STR ;
+    log<LOG_INFO>(L"%1% || ##################################################################") % __func__  ;
     log<LOG_INFO>(L"%1% || PROfit commandline input arguments. xml: %2%, tag: %3%, output %4%, nthread: %5% ") % __func__ % xmlname.c_str() % analysis_tag.c_str() % output_tag.c_str() % nthread ;
 
     //Initilize configuration from the XML;
