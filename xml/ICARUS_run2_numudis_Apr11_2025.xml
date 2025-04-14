@@ -148,7 +148,8 @@
     <allowlist type="spline" binning="reco" plotname="TPCInd1Gain">detector_var1_tpcind1gain_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="Ind1WireGap">detector_var6_ind1wiregap_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="Recomb">detector_var2_reco_multisigma</allowlist>
-    <allowlist type="spline" binning="reco" plotname="NULLVariation">detector_var4_null_multisigma</allowlist>
+    <!-- We don't want to actually use the Null variation as a systematic -->
+    <!--<allowlist type="spline" binning="reco" plotname="NULLVariation">detector_var4_null_multisigma</allowlist>-->
     <allowlist type="spline" binning="reco" plotname="SCINT">detector_var3_scint_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="TPCCohNoise">detector_var5_tpccohnoise_multisigma</allowlist>
     <allowlist type="spline" binning="reco" plotname="TPCIntNoise">detector_var4_tpcintnoise_multisigma</allowlist>
