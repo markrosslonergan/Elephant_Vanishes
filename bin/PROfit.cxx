@@ -21,6 +21,7 @@
 #include "CLI11.h"
 #include "LBFGSB.h"
 
+#include "TAttLine.h"
 #include "TAttMarker.h"
 #include "THStack.h"
 #include "TStyle.h"
@@ -169,6 +170,8 @@ enum class PlotOptions {
     CVasStack = 1 << 0,
     AreaNormalized = 1 << 1,
     BinWidthScaled = 1 << 2,
+    DataMCRatio = 1 << 3,
+    DataPostfitRatio = 1 << 4,
 };
 
 PlotOptions operator|(PlotOptions a, PlotOptions b) {
@@ -892,7 +895,7 @@ int main(int argc, char* argv[])
         chi2text.SetFillColor(0);
         chi2text.SetBorderSize(0);
         chi2text.SetTextAlign(12);
-        plot_channels((final_output_tag+"_PROfile_hists.pdf"), config, cv, bf, data, err_band.get(), post_err_band.get(), &chi2text);
+        plot_channels((final_output_tag+"_PROfile_hists.pdf"), config, cv, bf, data, err_band.get(), post_err_band.get(), &chi2text, PlotOptions::DataPostfitRatio);
 
         TCanvas c;
         c.Print((final_output_tag+"_postfit_posteriors.pdf[").c_str());
@@ -1284,12 +1287,12 @@ int main(int argc, char* argv[])
         chi2text.SetBorderSize(0);
         chi2text.SetTextAlign(12);
         std::unique_ptr<TGraphAsymmErrors> err_band = getErrorBand(config, prop, systs, binwidth_scale);
-        plot_channels(final_output_tag+"_PROplot_ErrorBand.pdf", config, spec, {}, data, err_band.get(), {}, &chi2text, opt);
+        plot_channels(final_output_tag+"_PROplot_ErrorBand.pdf", config, spec, {}, data, err_band.get(), {}, &chi2text, opt | PlotOptions::DataMCRatio);
         std::vector<std::unique_ptr<TGraphAsymmErrors>> other_err_bands;
         for(size_t io = 0; io < config.m_num_other_vars; ++io) {
             other_err_bands.push_back(getErrorBand(config, prop, other_systs[io], binwidth_scale, io));
             plot_channels(final_output_tag+"_PROplot_other_"+std::to_string(io)+"_ErrorBand.pdf", config, other_cvs[io], {}, other_data[io], 
-                    other_err_bands.back().get(), {}, NULL, opt, io);
+                    other_err_bands.back().get(), {}, NULL, opt | PlotOptions::DataMCRatio, io);
         }
 
         if (!mockreweights.empty()) {
@@ -1820,8 +1823,17 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                 for(size_t bin = 0; bin < channel_nbins; ++bin) {
                     cv_hist.SetBinContent(bin+1, 0);
                 }
+
+                // Set up TPads for ratios, unused if ratio option not chosen
+                TPad p1("p1", "p1", 0, 0.25, 1, 1);
+                p1.SetBottomMargin(0);
+
+                TPad p2("p2", "p2", 0, 0, 1, 0.25);
+                p2.SetTopMargin(0);
+                p2.SetBottomMargin(0.3);
+
+                THStack *cvstack = NULL;
                 if(cv) {
-                    THStack *cvstack = NULL;
                     if(bool(opt&PlotOptions::CVasStack)) cvstack = new THStack(std::to_string(global_channel_index).c_str(), hist_title.c_str());
                     for(size_t subchannel = 0; subchannel < config.m_num_subchannels[channel]; ++subchannel){
                         const std::string& subchannel_name  = config.m_fullnames[global_subchannel_index];
@@ -1842,14 +1854,6 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                             }
                         }
                     }
-                    if(bool(opt&PlotOptions::CVasStack)) {
-                        cvstack->SetMaximum(1.2*cvstack->GetMaximum());
-                        cvstack->Draw("hist");
-                    } else {
-                        cv_hist.SetMaximum(1.2*cv_hist.GetMaximum());
-                        leg->AddEntry(&cv_hist, "CV");
-                        cv_hist.Draw("hist");
-                    }
                 }
 
                 TGraphAsymmErrors *channel_errband = NULL;
@@ -1864,10 +1868,12 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                         channel_errband->SetPointEYhigh(bin, scale*(*errband)->GetErrorYhigh(bin+channel_start));
                         channel_errband->SetPointEYlow(bin, scale*(*errband)->GetErrorYlow(bin+channel_start));
                     }
-                    channel_errband->SetFillColor(kRed);
-                    channel_errband->SetFillStyle(3345);
-                    leg->AddEntry(channel_errband, "#pm 1#sigma");
-                    channel_errband->Draw("2 same");
+                    channel_errband->SetFillColor(kGray+2);
+                    //channel_errband->SetFillColorAlpha(kGray, 0.35);
+                    channel_errband->SetFillStyle(3002);
+                    channel_errband->SetLineColor(kGray+2);
+                    channel_errband->SetLineWidth(1);
+                    leg->AddEntry(channel_errband, "#pm 1#sigma", "f");
                 }
 
                 TH1D bf_hist(("bf"+std::to_string(global_channel_index)).c_str(), hist_title.c_str(), channel_nbins, edges.data());
@@ -1878,11 +1884,9 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     }
                     bf_hist.SetLineColor(kGreen);
                     bf_hist.SetLineWidth(3);
-                    leg->AddEntry(&bf_hist, "Best Fit");
+                    leg->AddEntry(&bf_hist, "Best Fit", "l");
                     if(bool(opt&PlotOptions::AreaNormalized))
                         bf_hist.Scale(1.0/bf_hist.Integral());
-                    if(cv) bf_hist.Draw("hist same");
-                    else bf_hist.Draw("hist");
                 }
 
                 TGraphAsymmErrors *post_channel_errband = NULL;
@@ -1897,10 +1901,11 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                         post_channel_errband->SetPointEYhigh(bin, scale*(*posterrband)->GetErrorYhigh(bin+channel_start));
                         post_channel_errband->SetPointEYlow(bin, scale*(*posterrband)->GetErrorYlow(bin+channel_start));
                     }
-                    post_channel_errband->SetFillColor(kCyan);
+                    post_channel_errband->SetFillColor(kRed);
                     post_channel_errband->SetFillStyle(3354);
-                    leg->AddEntry(post_channel_errband, "post-fit #pm 1#sigma");
-                    post_channel_errband->Draw("2 same");
+                    post_channel_errband->SetLineColor(kRed);
+                    post_channel_errband->SetLineWidth(1);
+                    leg->AddEntry(post_channel_errband, "post-fit #pm 1#sigma", "f");
                 }
 
                 TH1D data_hist;
@@ -1911,11 +1916,41 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     data_hist.SetMarkerStyle(kFullCircle);
                     data_hist.SetMarkerColor(kBlack);
                     data_hist.SetMarkerSize(1);
-                    leg->AddEntry(&data_hist, "Data");
+                    leg->AddEntry(&data_hist, "Data", "pe");
                     if(bool(opt&PlotOptions::BinWidthScaled))
                         data_hist.Scale(1, "width");
                     if(bool(opt&PlotOptions::AreaNormalized))
                         data_hist.Scale(1.0/data_hist.Integral());
+                }
+
+                /*******************/
+                /* Draw everything */
+                /*******************/
+
+                if(bool(opt&PlotOptions::DataMCRatio) || bool(opt&PlotOptions::DataPostfitRatio))
+                    p1.cd();
+
+                if(cv) {
+                    if(bool(opt&PlotOptions::CVasStack)) {
+                        cvstack->SetMaximum(1.2*cvstack->GetMaximum());
+                        cvstack->Draw("hist");
+                    } else {
+                        cv_hist.SetMaximum(1.2*cv_hist.GetMaximum());
+                        leg->AddEntry(&cv_hist, "CV", "l");
+                        cv_hist.Draw("hist");
+                    }
+                }
+
+                if(errband) channel_errband->Draw("2 same");
+
+                if(best_fit) {
+                    if(cv) bf_hist.Draw("hist same");
+                    else bf_hist.Draw("hist");
+                }
+
+                if(posterrband) post_channel_errband->Draw("2 same");
+
+                if(data) {
                     if(cv || best_fit) data_hist.Draw("PE1 same");
                     else data_hist.Draw("E1P");
                 }
@@ -1925,6 +1960,65 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                 }
                 
                 leg->Draw("same");
+
+                TH1D *ratio, *one;
+                TGraphAsymmErrors *ratio_err;
+                if(bool(opt&PlotOptions::DataMCRatio) || bool(opt&PlotOptions::DataPostfitRatio)) {
+                    p2.cd();
+
+                    std::string y_title = bool(opt&PlotOptions::DataMCRatio) ? "data/MC" : "data/Best Fit";
+                    ratio = new TH1D(("rat"+std::to_string(global_channel_index)).c_str(), (";"+xtitle+";"+y_title).c_str(), channel_nbins, edges.data());
+                    one = new TH1D(("one"+std::to_string(global_channel_index)).c_str(), (";"+xtitle+";"+y_title).c_str(), channel_nbins, edges.data());
+                    ratio_err = new TGraphAsymmErrors(); 
+                    *ratio_err = bool(opt&PlotOptions::DataMCRatio)
+                        ? *channel_errband
+                        : *post_channel_errband;
+
+                    one->GetYaxis()->SetTitleSize(0.1);
+                    one->GetYaxis()->SetLabelSize(0.1);
+                    one->GetXaxis()->SetTitleSize(0.1);
+                    one->GetXaxis()->SetLabelSize(0.1);
+                    one->GetYaxis()->SetTitleOffset(0.5);
+
+                    for(size_t i = 0; i < channel_nbins; ++i) {
+                        float numerator = data_hist.GetBinContent(i+1);
+                        float denonminator = 
+                            bool(opt&PlotOptions::DataMCRatio)
+                            ? cv_hist.GetBinContent(i+1)
+                            : bf_hist.GetBinContent(i+1);
+                        float rat = numerator/denonminator;
+                        if(isnan(rat)) rat = 1;
+                        ratio->SetBinError(i+1, 1.0 / sqrt(numerator));
+                        ratio->SetBinContent(i+1, rat);
+                        one->SetBinContent(i+1, 1.0);
+                        ratio_err->SetPointEYhigh(i, ratio_err->GetErrorYhigh(i)/ratio_err->GetPointY(i));
+                        ratio_err->SetPointEYlow(i, ratio_err->GetErrorYlow(i)/ratio_err->GetPointY(i));
+                        ratio_err->SetPointY(i, 1.0);
+                    }
+
+
+                    one->SetMaximum(1.5);
+                    one->SetMinimum(0.5);
+                    one->SetLineColor(kBlack);
+                    one->SetLineStyle(kDashed);
+                    one->Draw("hist");
+
+                    ratio->SetLineColor(kBlack);
+                    ratio->SetLineWidth(2);
+                    ratio->SetMarkerStyle(kFullCircle);
+                    ratio->SetMarkerColor(kBlack);
+                    ratio->SetMarkerSize(1);
+
+                    //ratio_err->SetFillColor(kRed);
+                    //ratio_err->SetFillStyle(3345);
+                    ratio_err->Draw("2 same");
+
+                    ratio->Draw("PE1 same");
+
+                    c.cd();
+                    p1.Draw();
+                    p2.Draw();
+                }
 
                 c.Print(filename.c_str());
 
