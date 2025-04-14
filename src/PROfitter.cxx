@@ -62,8 +62,11 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
         }
     }
     if(seed_pt.norm()>0){
+        log<LOG_INFO>(L"%1% || Seed point passed in. Being included.") % __func__  ;
         std::vector<float> std_vec(seed_pt.data(), seed_pt.data() + seed_pt.size());
         latin_samples.push_back(std_vec);
+    }else{
+        log<LOG_INFO>(L"%1% || No seed point passed in. ") % __func__  ;
     }
 
 
@@ -109,12 +112,12 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
     bool success = false;
 
-    x = PSO.getGlobalBestPosition();
 
     log<LOG_INFO>(L"%1% || Starting local fit of best swarm point. ") % __func__ ;
 
     for (size_t attempt = 1; attempt <= fitconfig.n_max_local_retries; ++attempt) {
         try {
+            x = PSO.getGlobalBestPosition();
             log<LOG_INFO>(L"%1% || Starting local minimization attempt %2%/%3%") % __func__ % attempt % fitconfig.n_max_local_retries;
             niter = solver.minimize(metric, x, fx, lb, ub);
             chi2s_localfits.push_back(fx);
@@ -139,12 +142,59 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
     }
 
     if (!success) {
-        log<LOG_WARNING>(L"%1% || All minimization attempts failed, falling back to PSO best") % __func__;
-        best_fit = PSO.getGlobalBestPosition();
-        chimin = PSO.getGlobalBestScore();
+        log<LOG_WARNING>(L"%1% || All minimization attempts failed, checking how good we got, otherwise falling back to PSO best") % __func__;
+
+        log<LOG_WARNING>(L"%1% || PSO chi %2%  and local: %3% ") % __func__ % PSO.getGlobalBestScore() % fx;
+        if (fx < chimin) {
+             best_fit = x;
+             chimin = fx;
+        }
+        if(PSO.getGlobalBestScore()< chimin){
+            best_fit = PSO.getGlobalBestPosition();
+            chimin = PSO.getGlobalBestScore();
+        }
     }
 
-    for(int i=0; i< fitconfig.n_localfit-1; i++){
+
+
+    int fudge = 0;
+    if(seed_pt.norm()>0){
+        fudge = 1;
+        log<LOG_INFO>(L"%1% || Starting local fit of seed point. ") % __func__ ;
+
+        for (size_t attempt = 1; attempt <= fitconfig.n_max_local_retries; ++attempt) {
+            try {
+                x = seed_pt;
+                log<LOG_INFO>(L"%1% || Starting local minimization attempt %2%/%3%") % __func__ % attempt % fitconfig.n_max_local_retries;
+                niter = solver.minimize(metric, x, fx, lb, ub);
+                chi2s_localfits.push_back(fx);
+
+                if (fx < chimin) {
+                    best_fit = x;
+                    chimin = fx;
+                }
+
+                log<LOG_INFO>(L"%1% || Minimization successful, chi %2% after %3% iterations") % __func__ % fx % niter;
+
+                std::string spec_string = "";
+                for (auto &f : x) spec_string += " " + std::to_string(f);
+                log<LOG_DEBUG>(L"%1% || Best Point after minimization: %2%") % __func__ % spec_string.c_str();
+
+                success = true;
+                break;
+
+            } catch (const std::runtime_error &except) {
+                log<LOG_WARNING>(L"%1% || Minimization attempt %2%/%3% failed: %4%") % __func__ % attempt % fitconfig.n_max_local_retries % except.what();
+            }
+        }
+
+        if (!success) {
+            log<LOG_WARNING>(L"%1% || All minimization attempts failed, falling back to PSO best") % __func__;
+        }
+    }
+
+
+    for(int i=0; i< fitconfig.n_localfit-1-fudge; i++){
         success = false;
 
         //After the best best fit, do you want to do more of the latin ones?

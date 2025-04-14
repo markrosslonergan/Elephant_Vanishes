@@ -543,7 +543,7 @@ int main(int argc, char* argv[])
     fitconfig.n_multistart = 3000;
     fitconfig.n_swarm_particles = 45;
     fitconfig.n_swarm_iterations = 250;
-    fitconfig.n_localfit=2;
+    fitconfig.n_localfit=3;
     fitconfig.n_max_local_retries = 4;
 
     log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the detailed global minimia finder. Ensure this is more detailed than quicker scan parameters below. ") % __func__ ;
@@ -649,7 +649,7 @@ int main(int argc, char* argv[])
     scanFitConfig.param.max_iterations = 0;
     scanFitConfig.param.max_linesearch = 250;
     scanFitConfig.param.delta = 1e-6;
-    scanFitConfig.n_multistart = 1500;
+    scanFitConfig.n_multistart = 1250;
     scanFitConfig.n_swarm_particles = 5;
     scanFitConfig.n_swarm_iterations = 100;
     scanFitConfig.n_localfit=2;
