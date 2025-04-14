@@ -6,6 +6,7 @@
 
 #include <cmath> 
 #include <future>
+#include <algorithm>
 
 #include "TGraph.h"
 #include "TLatex.h"
@@ -531,6 +532,7 @@ PROfile::PROfile(const PROconfig &config, const PROsyst &systs, const PROmodel &
             gprior->SetLineStyle(2);
             gprior->SetLineWidth(2);
             gprior->SetLineColor(kRed-7);
+            graphs[w]->GetYaxis()->SetRangeUser(0, std::min(graphs[w]->GetHistogram()->GetMaximum(),10.0));
         }
 
         if(w==model.nparams-1){
