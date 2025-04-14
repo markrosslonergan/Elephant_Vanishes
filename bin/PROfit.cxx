@@ -548,6 +548,8 @@ int main(int argc, char* argv[])
     fitconfig.n_swarm_iterations = 250;
     fitconfig.n_localfit=3;
     fitconfig.n_max_local_retries = 4;
+    fitconfig.wolfe = 0.99;
+    fitconfig.ftol = 1e-8;
 
     log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the detailed global minimia finder. Ensure this is more detailed than quicker scan parameters below. ") % __func__ ;
     for(const auto &[param_name, value]: global_fit_options) {
@@ -657,6 +659,8 @@ int main(int argc, char* argv[])
     scanFitConfig.n_swarm_iterations = 100;
     scanFitConfig.n_localfit=2;
     scanFitConfig.n_max_local_retries = 3;
+    scanFitconfig.wolfe = 0.99;
+    scanFitconfig.ftol = 1e-8;
 
     log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the quicker scans like PROfile and PROsurface. Ensure global above is more detailed. ") % __func__ ;
     for(const auto &[param_name, value]: scan_fit_options) {
