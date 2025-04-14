@@ -206,7 +206,8 @@ int main(int argc, char* argv[])
     bool force = false;
     bool noxrootd = false;
     size_t nthread = 1;
-    std::map<std::string, float> fit_options;
+    std::map<std::string, float> scan_fit_options;
+    std::map<std::string, float> global_fit_options;
     size_t maxevents;
     int global_seed = -1;
     std::string log_file = "";
@@ -255,7 +256,8 @@ int main(int argc, char* argv[])
     app.add_option("--inject-systs", injected_systs, "Systematic shifts to inject. Map of name and shift value in sigmas. Only spline systs are supported right now.");
     app.add_option("--syst-list", syst_list, "Override list of systematics to use (note: all systs must be in the xml).");
     app.add_option("--exclude-systs", systs_excluded, "List of systematics to exclude.")->excludes("--syst-list"); 
-    app.add_option("--fit-options", fit_options, "Parameters for LBFGSB.");
+    app.add_option("--fit-options", global_fit_options, "Parameters for single, detailed global best fit LBFGSB.");
+    app.add_option("--scan-fit-options", scan_fit_options, "Parameters for simpier, multiple best fits in PROfile/surface LBFGSB.");
     app.add_option("-f, --rwfile", reweights_file, "File containing histograms for reweighting");
     app.add_option("-r, --mockrw",   mockreweights, "Vector of reweights to use for mock data");
     app.add_option("--log", log_file, "File to save log to. Warning: Will overwrite this file.");
@@ -532,12 +534,20 @@ int main(int argc, char* argv[])
     PROsyst allcovsyst = systs.allsplines2cov(config, prop, dseed(PROseed::global_rng));
 
     //Some global minimizer params
+    // This runs for the single best gobal fit
     PROfitterConfig fitconfig;
     fitconfig.param.epsilon = 1e-6;
-    fitconfig.param.max_iterations = 100;
-    fitconfig.param.max_linesearch = 250;
+    fitconfig.param.max_iterations = 0;
+    fitconfig.param.max_linesearch = 400;
     fitconfig.param.delta = 1e-6;
-    for(const auto &[param_name, value]: fit_options) {
+    fitconfig.n_multistart = 3000;
+    fitconfig.n_swarm_particles = 45;
+    fitconfig.n_swarm_iterations = 250;
+    fitconfig.n_localfit=3;
+    fitconfig.n_max_local_retries = 4;
+
+    log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the detailed global minimia finder. Ensure this is more detailed than quicker scan parameters below. ") % __func__ ;
+    for(const auto &[param_name, value]: global_fit_options) {
         log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
         if(param_name == "epsilon") {
             fitconfig.param.epsilon = value;
@@ -630,6 +640,121 @@ int main(int argc, char* argv[])
         exit(EXIT_FAILURE);
     }
 
+
+
+    //Some Scan minimizer params.
+    // This runs lots during PROfile and surface. 
+    PROfitterConfig scanFitConfig;
+    scanFitConfig.param.epsilon = 1e-6;
+    scanFitConfig.param.max_iterations = 0;
+    scanFitConfig.param.max_linesearch = 250;
+    scanFitConfig.param.delta = 1e-6;
+    scanFitConfig.n_multistart = 1250;
+    scanFitConfig.n_swarm_particles = 5;
+    scanFitConfig.n_swarm_iterations = 100;
+    scanFitConfig.n_localfit=2;
+    scanFitConfig.n_max_local_retries = 3;
+
+    log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the quicker scans like PROfile and PROsurface. Ensure global above is more detailed. ") % __func__ ;
+    for(const auto &[param_name, value]: scan_fit_options) {
+        log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
+        if(param_name == "epsilon") {
+            scanFitConfig.param.epsilon = value;
+        } else if(param_name == "delta") {
+            scanFitConfig.param.delta = value;
+        } else if(param_name == "m") {
+            scanFitConfig.param.m = value;
+            if(value < 3) {
+                log<LOG_WARNING>(L"%1% || Number of corrections to approximate inverse Hessian in"
+                                 L" L-BFGS-B is recommended to be at least 3, provided value is %2%."
+                                 L" Note: this is controlled via --fit-options m.")
+                    % __func__ % value;
+            }
+        } else if(param_name == "epsilon_rel") {
+            scanFitConfig.param.epsilon_rel = value;
+        } else if(param_name == "past") {
+            scanFitConfig.param.past = value;
+            if(value == 0) {
+                log<LOG_WARNING>(L"%1% || L-BFGS-B 'past' parameter set to 0. This will disable delta convergence test")
+                    % __func__;
+            }
+        } else if(param_name == "max_iterations") {
+            scanFitConfig.param.max_iterations = value;
+        } else if(param_name == "max_submin") {
+            scanFitConfig.param.max_submin = value;
+        } else if(param_name == "max_linesearch") {
+            scanFitConfig.param.max_linesearch = value;
+        } else if(param_name == "min_step") {
+            scanFitConfig.param.min_step = value;
+            log<LOG_WARNING>(L"%1% || Modifying the minimum step size in the line search to be %2%."
+                             L" This is not usually needed according to the LBFGSpp documentation.")
+                % __func__ % value;
+        } else if(param_name == "max_step") {
+            scanFitConfig.param.max_step = value;
+            log<LOG_WARNING>(L"%1% || Modifying the maximum step size in the line search to be %2%."
+                             L" This is not usually needed according to the LBFGSpp documentation.")
+                % __func__ % value;
+        } else if(param_name == "ftol") {
+            scanFitConfig.param.ftol = value;
+        } else if(param_name == "wolfe") {
+            scanFitConfig.param.wolfe = value;
+        } else if(param_name == "n_multistart") {
+            scanFitConfig.n_multistart = value;
+            if(scanFitConfig.n_multistart < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 multistart point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
+        } else if(param_name == "n_localfit") {
+            scanFitConfig.n_localfit = value;
+            if(scanFitConfig.n_localfit < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 local fit point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
+        }else if(param_name == "n_swarm_particles") {
+            scanFitConfig.n_swarm_particles = value;
+            if(scanFitConfig.n_swarm_particles < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 PSO swarm particle point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
+        }else if(param_name == "n_swarm_iterations") {
+            scanFitConfig.n_swarm_iterations = value;
+            if(scanFitConfig.n_swarm_iterations < 1) {
+                log<LOG_ERROR>(L"%1% || Expected to run at least 1 swarm_iterations point. Provided value is %2%.")
+                    % __func__ % value;
+                return 1;
+            }
+        }else if(param_name == "MCMC-Burnin") {
+            MCMCburn = value;
+            if(MCMCburn < 1) {
+                log<LOG_WARNING>(L"%1% || Warning: Running without any burnin for MCMC.");
+            }
+        }else if(param_name == "MCMC-Iterations") {
+            MCMCiter = value;
+            if(MCMCiter < 1) {
+                log<LOG_ERROR>(L"%1% || Requested to run MCMC with no iterations.");
+            }
+        } else {
+            log<LOG_WARNING>(L"%1% || Unrecognized LBFGSB parameter %2%. Will ignore.") 
+                % __func__ % param_name.c_str();
+        }
+    }
+    try {
+        scanFitConfig.print();
+    } catch(std::invalid_argument &except) {
+        log<LOG_ERROR>(L"%1% || Invalid L-BFGS-B parameters: %2%") % __func__ % except.what();
+        log<LOG_ERROR>(L"Terminating.");
+        exit(EXIT_FAILURE);
+    }
+
+
+
+
+
+
+
     //Metric Time
     PROmetric *metric, *null_metric;
     if(chi2 == "PROchi") {
@@ -667,16 +792,35 @@ int main(int argc, char* argv[])
         for(size_t i = nphys; i < nparams; ++i) {
             lb(i) = metric_to_use->GetSysts().spline_lo[i-nphys];
             ub(i) = metric_to_use->GetSysts().spline_hi[i-nphys];
+        
+        
         }
         PROfitter fitter(ub, lb, fitconfig);
+
+        log<LOG_INFO>(L"%1% || ########### Starting Global Best Fit Minimizing ############") % __func__;
 
 
         float chi2 = fitter.Fit(*metric_to_use); 
         Eigen::VectorXf best_fit = fitter.best_fit;
         Eigen::MatrixXf post_covar = fitter.Covariance();
 
-        log<LOG_INFO>(L"%1% || Global Best Fit found at chi^2: %2% at param values:  %3% ") % __func__% chi2 % best_fit;
-
+        
+        log<LOG_INFO>(L"%1% || ################################################") % __func__;
+        log<LOG_INFO>(L"%1% || ########### Global Best Fit Results ############") % __func__;
+        log<LOG_INFO>(L"%1% || ################################################") % __func__;
+        log<LOG_INFO>(L"%1% || Global Best Fit chi^2: %2%") %__func__ % chi2;
+        log<LOG_INFO>(L"%1% || at paramters: ") % __func__;
+    
+        for(size_t i = 0; i< nparams; i++){
+        
+            if(i<nphys){
+                log<LOG_INFO>(L"%1% || %2%  :  %3% ") % __func__ % metric_to_use->GetModel().pretty_param_names[i].c_str() % best_fit(i);
+            }else{
+                log<LOG_INFO>(L"%1% || %2%  :  %3% ") % __func__ % metric_to_use->GetSysts().spline_names[i-nphys].c_str() % best_fit(i);
+            }
+        }
+        log<LOG_INFO>(L"%1% || ################################################") % __func__;
+        
         // TODO: Not sure I understand this covariance matrix
         log<LOG_INFO>(L"%1% || Starting a metropolis hastings chain to estimate the covariace matrix aroud the above best fit. Run and Burn is (%2%,%3%);") % __func__%MCMCiter % MCMCburn;
         Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
@@ -771,7 +915,7 @@ int main(int argc, char* argv[])
 
         log<LOG_INFO>(L"%1% ||  Beginning full PROfile ") % __func__;
 
-        PROfile profile(config, metric_to_use->GetSysts(), metric_to_use->GetModel(), *metric_to_use, myseed, fitconfig, 
+        PROfile profile(config, metric_to_use->GetSysts(), metric_to_use->GetModel(), *metric_to_use, myseed, scanFitConfig, 
                 final_output_tag+"_PROfile", chi2, !systs_only_profile, nthread, best_fit,
                 systs_only_profile ? systparams : allparams);
         TFile fout((final_output_tag+"_PROfile.root").c_str(), "RECREATE");
@@ -823,9 +967,9 @@ int main(int argc, char* argv[])
 
         if(!only_brazil) {
             if(statonly)
-                surface.FillSurfaceStat(config, fitconfig, final_output_tag+"_statonly_surface.txt");
+                surface.FillSurfaceStat(config, scanFitConfig, final_output_tag+"_statonly_surface.txt");
             else
-                surface.FillSurface(fitconfig, final_output_tag+"_surface.txt",myseed,nthread);
+                surface.FillSurface(scanFitConfig, final_output_tag+"_surface.txt",myseed,nthread);
         }
 
         std::vector<float> binedges_x, binedges_y;
@@ -923,9 +1067,9 @@ int main(int argc, char* argv[])
                         nbinsy, logy ? PROsurf::LogAxis : PROsurf::LinAxis, ylo, yhi);
 
                 if(statonly)
-                    brazil_band_surfaces.back().FillSurfaceStat(config, fitconfig, "");
+                    brazil_band_surfaces.back().FillSurfaceStat(config, scanFitConfig, "");
                 else
-                    brazil_band_surfaces.back().FillSurface(fitconfig, "", myseed, nthread);
+                    brazil_band_surfaces.back().FillSurface(scanFitConfig, "", myseed, nthread);
 
                 TH2D surf("surf", (";"+xlabel+";"+ylabel).c_str(), surface.nbinsx, binedges_x.data(), surface.nbinsy, binedges_y.data());
 
@@ -1332,7 +1476,7 @@ int main(int argc, char* argv[])
         for(size_t i = 0; i < nthread; i++) {
             dchi2s.emplace_back();
             outs.emplace_back();
-            fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, systs, chi2, pparams, llt.matrixL(), fitconfig,(*myseed.getThreadSeeds())[i], (int)i, !eventbyevent};
+            fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, systs, chi2, pparams, llt.matrixL(), scanFitConfig,(*myseed.getThreadSeeds())[i], (int)i, !eventbyevent};
 
             threads.emplace_back(fc_worker, args);
         }
