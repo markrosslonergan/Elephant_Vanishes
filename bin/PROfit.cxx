@@ -169,6 +169,8 @@ enum class PlotOptions {
     CVasStack = 1 << 0,
     AreaNormalized = 1 << 1,
     BinWidthScaled = 1 << 2,
+    DataMCRatio = 1 << 3,
+    DataPostfitRatio = 1 << 4,
 };
 
 PlotOptions operator|(PlotOptions a, PlotOptions b) {
@@ -1676,8 +1678,17 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                 for(size_t bin = 0; bin < channel_nbins; ++bin) {
                     cv_hist.SetBinContent(bin+1, 0);
                 }
+
+                // Set up TPads for ratios, unused if ratio option not chosen
+                TPad p1("p1", "p1", 0, 0.25, 1, 1);
+                p1.SetBottomMargin(0);
+
+                TPad p2("p2", "p2", 0, 0, 1, 0.25);
+                p2.SetTopMargin(0);
+                p2.SetBottomMargin(0.3);
+
+                THStack *cvstack = NULL;
                 if(cv) {
-                    THStack *cvstack = NULL;
                     if(bool(opt&PlotOptions::CVasStack)) cvstack = new THStack(std::to_string(global_channel_index).c_str(), hist_title.c_str());
                     for(size_t subchannel = 0; subchannel < config.m_num_subchannels[channel]; ++subchannel){
                         const std::string& subchannel_name  = config.m_fullnames[global_subchannel_index];
@@ -1698,14 +1709,6 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                             }
                         }
                     }
-                    if(bool(opt&PlotOptions::CVasStack)) {
-                        cvstack->SetMaximum(1.2*cvstack->GetMaximum());
-                        cvstack->Draw("hist");
-                    } else {
-                        cv_hist.SetMaximum(1.2*cv_hist.GetMaximum());
-                        leg->AddEntry(&cv_hist, "CV");
-                        cv_hist.Draw("hist");
-                    }
                 }
 
                 TGraphAsymmErrors *channel_errband = NULL;
@@ -1723,7 +1726,6 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     channel_errband->SetFillColor(kRed);
                     channel_errband->SetFillStyle(3345);
                     leg->AddEntry(channel_errband, "#pm 1#sigma");
-                    channel_errband->Draw("2 same");
                 }
 
                 TH1D bf_hist(("bf"+std::to_string(global_channel_index)).c_str(), hist_title.c_str(), channel_nbins, edges.data());
@@ -1737,8 +1739,6 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     leg->AddEntry(&bf_hist, "Best Fit");
                     if(bool(opt&PlotOptions::AreaNormalized))
                         bf_hist.Scale(1.0/bf_hist.Integral());
-                    if(cv) bf_hist.Draw("hist same");
-                    else bf_hist.Draw("hist");
                 }
 
                 TGraphAsymmErrors *post_channel_errband = NULL;
@@ -1756,7 +1756,6 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                     post_channel_errband->SetFillColor(kCyan);
                     post_channel_errband->SetFillStyle(3354);
                     leg->AddEntry(post_channel_errband, "post-fit #pm 1#sigma");
-                    post_channel_errband->Draw("2 same");
                 }
 
                 TH1D data_hist;
@@ -1772,6 +1771,36 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                         data_hist.Scale(1, "width");
                     if(bool(opt&PlotOptions::AreaNormalized))
                         data_hist.Scale(1.0/data_hist.Integral());
+                }
+
+                /*******************/
+                /* Draw everything */
+                /*******************/
+
+                if(bool(opt&PlotOptions::DataMCRatio) || bool(opt&PlotOptions::DataPostfitRatio))
+                    p1.cd();
+
+                if(cv) {
+                    if(bool(opt&PlotOptions::CVasStack)) {
+                        cvstack->SetMaximum(1.2*cvstack->GetMaximum());
+                        cvstack->Draw("hist");
+                    } else {
+                        cv_hist.SetMaximum(1.2*cv_hist.GetMaximum());
+                        leg->AddEntry(&cv_hist, "CV");
+                        cv_hist.Draw("hist");
+                    }
+                }
+
+                if(errband) channel_errband->Draw("2 same");
+
+                if(best_fit) {
+                    if(cv) bf_hist.Draw("hist same");
+                    else bf_hist.Draw("hist");
+                }
+
+                if(posterrband) post_channel_errband->Draw("2 same");
+
+                if(data) {
                     if(cv || best_fit) data_hist.Draw("PE1 same");
                     else data_hist.Draw("E1P");
                 }
@@ -1781,6 +1810,54 @@ void plot_channels(const std::string &filename, const PROconfig &config, std::op
                 }
                 
                 leg->Draw("same");
+
+                if(bool(opt&PlotOptions::DataMCRatio) || bool(opt&PlotOptions::DataPostfitRatio)) {
+                    p2.cd();
+
+                    std::string y_title = bool(opt&PlotOptions::DataMCRatio) ? "data/MC" : "data/Best Fit";
+                    TH1D ratio(("rat"+std::to_string(global_channel_index)).c_str(), (";"+xtitle+";"+ytitle).c_str(), channel_nbins, edges.data());
+                    ratio.GetYaxis()->SetTitleSize(0.1);
+                    ratio.GetYaxis()->SetLabelSize(0.1);
+                    ratio.GetXaxis()->SetTitleSize(0.1);
+                    ratio.GetXaxis()->SetLabelSize(0.1);
+                    ratio.GetYaxis()->SetTitleOffset(0.5);
+
+                    TGraphAsymmErrors ratio_err = 
+                        bool(opt&PlotOptions::DataMCRatio)
+                        ? *channel_errband
+                        : *post_channel_errband;
+
+                    for(size_t i = 0; i < channel_nbins; ++i) {
+                        float numerator = data_hist.GetBinContent(i+1);
+                        float denonminator = 
+                            bool(opt&PlotOptions::DataMCRatio)
+                            ? cv_hist.GetBinContent(i+1)
+                            : bf_hist.GetBinContent(i+1);
+                        float rat = numerator/denonminator;
+                        if(isnan(rat)) rat = 1;
+                        ratio.SetBinContent(i+1, rat);
+                        ratio_err.SetPointEYhigh(i, ratio_err.GetErrorYhigh(i)/ratio_err.GetPointY(i));
+                        ratio_err.SetPointEYlow(i, ratio_err.GetErrorYlow(i)/ratio_err.GetPointY(i));
+                        ratio_err.SetPointY(i, 1.0);
+                    }
+
+                    ratio.SetMaximum(ratio.GetMaximum()*1.2);
+                    ratio.SetMinimum(ratio.GetMinimum()*0.8);
+                    ratio.SetLineColor(kBlack);
+                    ratio.SetLineWidth(2);
+                    ratio.SetMarkerStyle(kFullCircle);
+                    ratio.SetMarkerColor(kBlack);
+                    ratio.SetMarkerSize(1);
+                    ratio.Draw("PE1");
+
+                    ratio_err.SetFillColor(kRed);
+                    ratio_err.SetFillStyle(3345);
+                    ratio_err.Draw("2 same");
+
+                    c.cd();
+                    p1.Draw();
+                    p2.Draw();
+                }
 
                 c.Print(filename.c_str());
 
