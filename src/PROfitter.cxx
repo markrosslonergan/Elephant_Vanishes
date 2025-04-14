@@ -190,6 +190,12 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
         if (!success) {
             log<LOG_WARNING>(L"%1% || All minimization attempts failed, falling back to PSO best") % __func__;
+            if (fx < chimin) {
+                    best_fit = x;
+                    chimin = fx;
+            }
+
+
         }
     }
 
@@ -229,6 +235,12 @@ float PROfitter::Fit(PROmetric &metric, const Eigen::VectorXf &seed_pt ) {
 
         if (!success) {
             log<LOG_WARNING>(L"%1% || All minimization attempts failed. Hopefully the PSO worked above.") % __func__;
+              if (fx < chimin) {
+                    best_fit = x;
+                    chimin = fx;
+                }
+
+
         }
     }
 
