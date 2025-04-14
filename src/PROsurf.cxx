@@ -154,7 +154,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
 
         Eigen::VectorXf last_bf;
         if(init_seed.norm()>0) last_bf= init_seed;
-        bool reset = false;
+        int reset = -1;
 
         //first get what values to sample
         std::vector<float> test_values;
@@ -166,9 +166,8 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
                 if (j <= nstep - nstep / 2) {
                     k = nstep / 2 + j;  // Forward direction
                 } else {
-                    if(!reset){
-                        reset = true;
-                        last_bf = init_seed;
+                    if(reset<0){
+                        reset = test_values.size();
                     }
                     k = nstep - j;  // Backward direction
                 }
@@ -182,6 +181,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
 
 
         //and minimize
+        int cnt=0;
         for(auto &v: test_values){
             float which_value = v;    
             float fx;
@@ -192,6 +192,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
 
             local_metric->fixSpline(which_spline,which_value);
 
+            if(reset==cnt) last_bf = init_seed;
             PROfitter fitter(tub, tlb, fitconfig, seed+i);
             if(last_bf.norm()>0){
                 fx = fitter.Fit(*local_metric,last_bf);
@@ -207,6 +208,7 @@ std::vector<profOut> PROfile::PROfilePointHelper(const PROsyst *systs, const PRO
             log<LOG_INFO>(L"%1% || Fixed value of spline # %2% is value %3%, has a chi post of : %4% (i %5% nstep %6% ") % __func__ % which_spline % which_value % fx % i % nstep;
             log<LOG_INFO>(L"%1% || at a BF param value of @ %2%") % __func__ %  spec_string.c_str();
 
+            cnt++;
         }    //end step loop        
         output.sort();
         outs.push_back(output);
