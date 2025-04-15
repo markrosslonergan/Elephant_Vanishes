@@ -214,6 +214,9 @@ int main(int argc, char* argv[])
     size_t maxevents;
     int global_seed = -1;
     std::string log_file = "";
+    std::string fit_preset = "good";
+    static const std::unordered_set<std::string> allowed_preset = {"good","fast","overkill"};
+
 
     bool with_splines = false, binwidth_scale = false, area_normalized = false;
 
@@ -261,6 +264,7 @@ int main(int argc, char* argv[])
     app.add_option("--exclude-systs", systs_excluded, "List of systematics to exclude.")->excludes("--syst-list"); 
     app.add_option("--fit-options", global_fit_options, "Parameters for single, detailed global best fit LBFGSB.");
     app.add_option("--scan-fit-options", scan_fit_options, "Parameters for simpier, multiple best fits in PROfile/surface LBFGSB.");
+    app.add_option("-p,--preset", fit_preset, "Preset fitting params. Available `fast`, `good` and `overkill` .");
     app.add_option("-f, --rwfile", reweights_file, "File containing histograms for reweighting");
     app.add_option("-r, --mockrw",   mockreweights, "Vector of reweights to use for mock data");
     app.add_option("--log", log_file, "File to save log to. Warning: Will overwrite this file.");
@@ -324,7 +328,10 @@ int main(int argc, char* argv[])
 
     log<LOG_INFO>(L" %1% ") % getIcon().c_str()  ;
     std::string final_output_tag =analysis_tag +"_"+output_tag;
+ 
+
     
+
     log<LOG_INFO>(L"%1% || ##################################################################") % __func__  ;
     log<LOG_INFO>(L"%1% || ####################### PROfit version v%2% ######################") % __func__ % PROJECT_VERSION_STR ;
     log<LOG_INFO>(L"%1% || ##################################################################") % __func__  ;
@@ -536,21 +543,48 @@ int main(int argc, char* argv[])
     
     PROsyst allcovsyst = systs.allsplines2cov(config, prop, dseed(PROseed::global_rng));
 
+    if (allowed_preset.find(fit_preset) == allowed_preset.end()) {
+        log<LOG_ERROR>(L"%1% || ERROR allowed fit_presets are good, fast or overkill. You entred : %2%.")% __func__ % fit_preset.c_str();
+                return 1;
+    }
     //Some global minimizer params
     // This runs for the single best gobal fit
     PROfitterConfig fitconfig;
-    fitconfig.param.epsilon = 1e-6;
-    fitconfig.param.max_iterations = 0;
-    fitconfig.param.max_linesearch = 400;
-    fitconfig.param.delta = 1e-6;
-    fitconfig.n_multistart = 3000;
-    fitconfig.n_swarm_particles = 45;
-    fitconfig.n_swarm_iterations = 250;
-    fitconfig.n_localfit=3;
-    fitconfig.n_max_local_retries = 4;
-    fitconfig.wolfe = 0.99;
-    fitconfig.ftol = 1e-8;
-
+    if(fit_preset == "good"){
+        fitconfig.param.epsilon = 1e-6;
+        fitconfig.param.max_iterations = 0;
+        fitconfig.param.max_linesearch = 400;
+        fitconfig.param.delta = 1e-6;
+        fitconfig.n_multistart = 3000;
+        fitconfig.n_swarm_particles = 45;
+        fitconfig.n_swarm_iterations = 250;
+        fitconfig.n_localfit=3;
+        fitconfig.n_max_local_retries = 4;
+        fitconfig.wolfe = 0.99;
+        fitconfig.ftol = 1e-8;
+    }else if (fit_preset == "fast"){
+        fitconfig.param.epsilon = 1e-6;
+        fitconfig.param.max_iterations = 100;
+        fitconfig.param.max_linesearch = 250;
+        fitconfig.param.delta = 1e-6;
+        fitconfig.n_multistart = 1250;
+        fitconfig.n_swarm_particles = 25;
+        fitconfig.n_swarm_iterations = 100;
+        fitconfig.n_localfit=2;
+        fitconfig.n_max_local_retries = 1;
+    }else if(fit_preset == "overkill"){
+        fitconfig.param.epsilon = 1e-6;
+        fitconfig.param.max_iterations = 0;
+        fitconfig.param.max_linesearch = 1000;
+        fitconfig.param.delta = 1e-6;
+        fitconfig.n_multistart = 3000;
+        fitconfig.n_swarm_particles = 100;
+        fitconfig.n_swarm_iterations = 250;
+        fitconfig.n_localfit=4;
+        fitconfig.n_max_local_retries = 8;
+        fitconfig.wolfe = 0.99;
+        fitconfig.ftol = 1e-8;
+    }
     log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the detailed global minimia finder. Ensure this is more detailed than quicker scan parameters below. ") % __func__ ;
     for(const auto &[param_name, value]: global_fit_options) {
         log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
@@ -650,17 +684,41 @@ int main(int argc, char* argv[])
     //Some Scan minimizer params.
     // This runs lots during PROfile and surface. 
     PROfitterConfig scanFitConfig;
-    scanFitConfig.param.epsilon = 1e-6;
-    scanFitConfig.param.max_iterations = 0;
-    scanFitConfig.param.max_linesearch = 250;
-    scanFitConfig.param.delta = 1e-6;
-    scanFitConfig.n_multistart = 1250;
-    scanFitConfig.n_swarm_particles = 5;
-    scanFitConfig.n_swarm_iterations = 100;
-    scanFitConfig.n_localfit=2;
-    scanFitConfig.n_max_local_retries = 3;
-    scanFitconfig.wolfe = 0.99;
-    scanFitconfig.ftol = 1e-8;
+   if(fit_preset == "good"){
+        scanFitConfig.param.epsilon = 1e-6;
+        scanFitConfig.param.max_iterations = 0;
+        scanFitConfig.param.max_linesearch = 250;
+        scanFitConfig.param.delta = 1e-6;
+        scanFitConfig.n_multistart = 1500;
+        scanFitConfig.n_swarm_particles = 5;
+        scanFitConfig.n_swarm_iterations = 100;
+        scanFitConfig.n_localfit=2;
+        scanFitConfig.n_max_local_retries = 3;
+        scanFitconfig.wolfe = 0.99;
+        scanFitconfig.ftol = 1e-8;
+   }else if (fit_preset == "fast"){
+        scanFitconfig.param.epsilon = 1e-6;
+        scanFitconfig.param.max_iterations = 100;
+        scanFitconfig.param.max_linesearch = 200;
+        scanFitconfig.param.delta = 1e-6;
+        scanFitconfig.n_multistart = 1000;
+        scanFitconfig.n_swarm_particles = 1;
+        scanFitconfig.n_swarm_iterations = 100;
+        scanFitconfig.n_localfit=2;
+        scanFitconfig.n_max_local_retries = 1;
+    }else if(fit_preset == "overkill"){
+        scanFitconfig.param.epsilon = 1e-6;
+        scanFitconfig.param.max_iterations = 0;
+        scanFitconfig.param.max_linesearch = 500;
+        scanFitconfig.param.delta = 1e-6;
+        scanFitconfig.n_multistart = 2500;
+        scanFitconfig.n_swarm_particles = 30;
+        scanFitconfig.n_swarm_iterations = 250;
+        scanFitconfig.n_localfit=4;
+        scanFitconfig.n_max_local_retries = 7;
+        scanFitconfig.wolfe = 0.99;
+        scanFitconfig.ftol = 1e-8;
+    }
 
     log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the quicker scans like PROfile and PROsurface. Ensure global above is more detailed. ") % __func__ ;
     for(const auto &[param_name, value]: scan_fit_options) {
