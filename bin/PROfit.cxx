@@ -96,9 +96,7 @@ int main(int argc, char* argv[])
 
     size_t nuniv;
 
-    size_t MCMCiter = 50'000;
-    size_t MCMCburn = 10'000;
-
+   
     //Global Arguments for all PROfit enables subcommands.
     app.add_option("-x,--xml", xmlname, "Input PROfit XML configuration file.")->required();
     app.add_option("-v,--verbosity", GLOBAL_LEVEL, "Verbosity Level [1-4]->[Error,Warning,Info,Debug].")->default_val(GLOBAL_LEVEL);
@@ -401,271 +399,13 @@ int main(int argc, char* argv[])
     }
     //Some global minimizer params
     // This runs for the single best gobal fit
-    PROfitterConfig fitconfig;
-    if(fit_preset == "good"){
-        fitconfig.param.epsilon = 1e-6;
-        fitconfig.param.max_iterations = 0;
-        fitconfig.param.max_linesearch = 400;
-        fitconfig.param.delta = 1e-6;
-        fitconfig.n_multistart = 3000;
-        fitconfig.n_swarm_particles = 45;
-        fitconfig.n_swarm_iterations = 250;
-        fitconfig.n_localfit=3;
-        fitconfig.n_max_local_retries = 4;
-        fitconfig.param.wolfe = 0.99;
-        fitconfig.param.ftol = 1e-8;
-    }else if (fit_preset == "fast"){
-        fitconfig.param.epsilon = 1e-6;
-        fitconfig.param.max_iterations = 100;
-        fitconfig.param.max_linesearch = 250;
-        fitconfig.param.delta = 1e-6;
-        fitconfig.n_multistart = 1250;
-        fitconfig.n_swarm_particles = 25;
-        fitconfig.n_swarm_iterations = 100;
-        fitconfig.n_localfit=2;
-        fitconfig.n_max_local_retries = 1;
-    }else if(fit_preset == "overkill"){
-        fitconfig.param.epsilon = 1e-6;
-        fitconfig.param.max_iterations = 0;
-        fitconfig.param.max_linesearch = 1000;
-        fitconfig.param.delta = 1e-6;
-        fitconfig.n_multistart = 3000;
-        fitconfig.n_swarm_particles = 100;
-        fitconfig.n_swarm_iterations = 250;
-        fitconfig.n_localfit=4;
-        fitconfig.n_max_local_retries = 8;
-        fitconfig.param.wolfe = 0.99;
-        fitconfig.param.ftol = 1e-8;
-    }
-    log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the detailed global minimia finder. Ensure this is more detailed than quicker scan parameters below. ") % __func__ ;
-    for(const auto &[param_name, value]: global_fit_options) {
-        log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
-        if(param_name == "epsilon") {
-            fitconfig.param.epsilon = value;
-        } else if(param_name == "delta") {
-            fitconfig.param.delta = value;
-        } else if(param_name == "m") {
-            fitconfig.param.m = value;
-            if(value < 3) {
-                log<LOG_WARNING>(L"%1% || Number of corrections to approximate inverse Hessian in"
-                                 L" L-BFGS-B is recommended to be at least 3, provided value is %2%."
-                                 L" Note: this is controlled via --fit-options m.")
-                    % __func__ % value;
-            }
-        } else if(param_name == "epsilon_rel") {
-            fitconfig.param.epsilon_rel = value;
-        } else if(param_name == "past") {
-            fitconfig.param.past = value;
-            if(value == 0) {
-                log<LOG_WARNING>(L"%1% || L-BFGS-B 'past' parameter set to 0. This will disable delta convergence test")
-                    % __func__;
-            }
-        } else if(param_name == "max_iterations") {
-            fitconfig.param.max_iterations = value;
-        } else if(param_name == "max_submin") {
-            fitconfig.param.max_submin = value;
-        } else if(param_name == "max_linesearch") {
-            fitconfig.param.max_linesearch = value;
-        } else if(param_name == "min_step") {
-            fitconfig.param.min_step = value;
-            log<LOG_WARNING>(L"%1% || Modifying the minimum step size in the line search to be %2%."
-                             L" This is not usually needed according to the LBFGSpp documentation.")
-                % __func__ % value;
-        } else if(param_name == "max_step") {
-            fitconfig.param.max_step = value;
-            log<LOG_WARNING>(L"%1% || Modifying the maximum step size in the line search to be %2%."
-                             L" This is not usually needed according to the LBFGSpp documentation.")
-                % __func__ % value;
-        } else if(param_name == "ftol") {
-            fitconfig.param.ftol = value;
-        } else if(param_name == "wolfe") {
-            fitconfig.param.wolfe = value;
-        } else if(param_name == "n_multistart") {
-            fitconfig.n_multistart = value;
-            if(fitconfig.n_multistart < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 multistart point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        } else if(param_name == "n_localfit") {
-            fitconfig.n_localfit = value;
-            if(fitconfig.n_localfit < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 local fit point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "n_swarm_particles") {
-            fitconfig.n_swarm_particles = value;
-            if(fitconfig.n_swarm_particles < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 PSO swarm particle point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "n_swarm_iterations") {
-            fitconfig.n_swarm_iterations = value;
-            if(fitconfig.n_swarm_iterations < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 swarm_iterations point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "MCMC-Burnin") {
-            MCMCburn = value;
-            if(MCMCburn < 1) {
-                log<LOG_WARNING>(L"%1% || Warning: Running without any burnin for MCMC.");
-            }
-        }else if(param_name == "MCMC-Iterations") {
-            MCMCiter = value;
-            if(MCMCiter < 1) {
-                log<LOG_ERROR>(L"%1% || Requested to run MCMC with no iterations.");
-            }
-        } else {
-            log<LOG_WARNING>(L"%1% || Unrecognized LBFGSB parameter %2%. Will ignore.") 
-                % __func__ % param_name.c_str();
-        }
-    }
-    try {
-        fitconfig.print();
-    } catch(std::invalid_argument &except) {
-        log<LOG_ERROR>(L"%1% || Invalid L-BFGS-B parameters: %2%") % __func__ % except.what();
-        log<LOG_ERROR>(L"Terminating.");
-        exit(EXIT_FAILURE);
-    }
-
+    PROfitterConfig fitconfig(global_fit_options, fit_preset, false);
+    
 
 
     //Some Scan minimizer params.
     // This runs lots during PROfile and surface. 
-    PROfitterConfig scanFitConfig;
-   if(fit_preset == "good"){
-        scanFitConfig.param.epsilon = 1e-6;
-        scanFitConfig.param.max_iterations = 0;
-        scanFitConfig.param.max_linesearch = 250;
-        scanFitConfig.param.delta = 1e-6;
-        scanFitConfig.n_multistart = 1500;
-        scanFitConfig.n_swarm_particles = 5;
-        scanFitConfig.n_swarm_iterations = 100;
-        scanFitConfig.n_localfit=2;
-        scanFitConfig.n_max_local_retries = 3;
-        scanFitConfig.param.wolfe = 0.99;
-        scanFitConfig.param.ftol = 1e-8;
-   }else if (fit_preset == "fast"){
-        scanFitConfig.param.epsilon = 1e-6;
-        scanFitConfig.param.max_iterations = 100;
-        scanFitConfig.param.max_linesearch = 200;
-        scanFitConfig.param.delta = 1e-6;
-        scanFitConfig.n_multistart = 1000;
-        scanFitConfig.n_swarm_particles = 1;
-        scanFitConfig.n_swarm_iterations = 100;
-        scanFitConfig.n_localfit=2;
-        scanFitConfig.n_max_local_retries = 1;
-    }else if(fit_preset == "overkill"){
-        scanFitConfig.param.epsilon = 1e-6;
-        scanFitConfig.param.max_iterations = 0;
-        scanFitConfig.param.max_linesearch = 500;
-        scanFitConfig.param.delta = 1e-6;
-        scanFitConfig.n_multistart = 2500;
-        scanFitConfig.n_swarm_particles = 30;
-        scanFitConfig.n_swarm_iterations = 250;
-        scanFitConfig.n_localfit=4;
-        scanFitConfig.n_max_local_retries = 7;
-        scanFitConfig.param.wolfe = 0.99;
-        scanFitConfig.param.ftol = 1e-8;
-    }
-
-    log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the quicker scans like PROfile and PROsurface. Ensure global above is more detailed. ") % __func__ ;
-    for(const auto &[param_name, value]: scan_fit_options) {
-        log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
-        if(param_name == "epsilon") {
-            scanFitConfig.param.epsilon = value;
-        } else if(param_name == "delta") {
-            scanFitConfig.param.delta = value;
-        } else if(param_name == "m") {
-            scanFitConfig.param.m = value;
-            if(value < 3) {
-                log<LOG_WARNING>(L"%1% || Number of corrections to approximate inverse Hessian in"
-                                 L" L-BFGS-B is recommended to be at least 3, provided value is %2%."
-                                 L" Note: this is controlled via --fit-options m.")
-                    % __func__ % value;
-            }
-        } else if(param_name == "epsilon_rel") {
-            scanFitConfig.param.epsilon_rel = value;
-        } else if(param_name == "past") {
-            scanFitConfig.param.past = value;
-            if(value == 0) {
-                log<LOG_WARNING>(L"%1% || L-BFGS-B 'past' parameter set to 0. This will disable delta convergence test")
-                    % __func__;
-            }
-        } else if(param_name == "max_iterations") {
-            scanFitConfig.param.max_iterations = value;
-        } else if(param_name == "max_submin") {
-            scanFitConfig.param.max_submin = value;
-        } else if(param_name == "max_linesearch") {
-            scanFitConfig.param.max_linesearch = value;
-        } else if(param_name == "min_step") {
-            scanFitConfig.param.min_step = value;
-            log<LOG_WARNING>(L"%1% || Modifying the minimum step size in the line search to be %2%."
-                             L" This is not usually needed according to the LBFGSpp documentation.")
-                % __func__ % value;
-        } else if(param_name == "max_step") {
-            scanFitConfig.param.max_step = value;
-            log<LOG_WARNING>(L"%1% || Modifying the maximum step size in the line search to be %2%."
-                             L" This is not usually needed according to the LBFGSpp documentation.")
-                % __func__ % value;
-        } else if(param_name == "ftol") {
-            scanFitConfig.param.ftol = value;
-        } else if(param_name == "wolfe") {
-            scanFitConfig.param.wolfe = value;
-        } else if(param_name == "n_multistart") {
-            scanFitConfig.n_multistart = value;
-            if(scanFitConfig.n_multistart < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 multistart point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        } else if(param_name == "n_localfit") {
-            scanFitConfig.n_localfit = value;
-            if(scanFitConfig.n_localfit < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 local fit point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "n_swarm_particles") {
-            scanFitConfig.n_swarm_particles = value;
-            if(scanFitConfig.n_swarm_particles < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 PSO swarm particle point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "n_swarm_iterations") {
-            scanFitConfig.n_swarm_iterations = value;
-            if(scanFitConfig.n_swarm_iterations < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 swarm_iterations point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "MCMC-Burnin") {
-            MCMCburn = value;
-            if(MCMCburn < 1) {
-                log<LOG_WARNING>(L"%1% || Warning: Running without any burnin for MCMC.");
-            }
-        }else if(param_name == "MCMC-Iterations") {
-            MCMCiter = value;
-            if(MCMCiter < 1) {
-                log<LOG_ERROR>(L"%1% || Requested to run MCMC with no iterations.");
-            }
-        } else {
-            log<LOG_WARNING>(L"%1% || Unrecognized LBFGSB parameter %2%. Will ignore.") 
-                % __func__ % param_name.c_str();
-        }
-    }
-    try {
-        scanFitConfig.print();
-    } catch(std::invalid_argument &except) {
-        log<LOG_ERROR>(L"%1% || Invalid L-BFGS-B parameters: %2%") % __func__ % except.what();
-        log<LOG_ERROR>(L"Terminating.");
-        exit(EXIT_FAILURE);
-    }
-
+    PROfitterConfig scanFitConfig(scan_fit_options, fit_preset, true);
 
 
 
@@ -739,7 +479,7 @@ int main(int argc, char* argv[])
         log<LOG_INFO>(L"%1% || ################################################") % __func__;
         
         // TODO: Not sure I understand this covariance matrix
-        log<LOG_INFO>(L"%1% || Starting a metropolis hastings chain to estimate the covariace matrix aroud the above best fit. Run and Burn is (%2%,%3%);") % __func__%MCMCiter % MCMCburn;
+        log<LOG_INFO>(L"%1% || Starting a metropolis hastings chain to estimate the covariace matrix aroud the above best fit. Run and Burn is (%2%,%3%);") % __func__%fitconfig.MCMCiter % fitconfig.MCMCburn;
         Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
 
         Eigen::MatrixXf covmat = Eigen::MatrixXf::Constant(nparams, nparams, 0);
@@ -748,7 +488,7 @@ int main(int argc, char* argv[])
             covmat += (value-best_fit) * (value-best_fit).transpose();
             count += 1; 
         };
-        mh.run(MCMCburn,MCMCiter, action);
+        mh.run(fitconfig.MCMCburn,fitconfig.MCMCiter, action);
 
         TH2D covhist("ch", "", nparams, 0, nparams, nparams, 0, nparams);
         TH2D physhist("ph","", nparams, 0, nparams, nphys, 0, nphys);
@@ -773,7 +513,7 @@ int main(int argc, char* argv[])
         c1.Print((final_output_tag+"_postfit_cov.pdf").c_str());
         physhist.Draw("colz");
         c1.Print("phys_cov.pdf");
-        log<LOG_INFO>(L"%1% || MCMC acceptance is  %2%. ") % __func__% ((double)count /MCMCiter);
+        log<LOG_INFO>(L"%1% || MCMC acceptance is  %2%. ") % __func__% ((double)count /fitconfig.MCMCiter);
 
         std::string hname = "#chi^{2}/ndf = " + to_string(chi2) + "/" + to_string(config.m_num_bins_total_collapsed);
         PROspec cv = FillCVSpectrum(config, prop, true);
@@ -797,12 +537,12 @@ int main(int argc, char* argv[])
         Metropolis mh_pre(prior_only_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng), 0.2, fixed_pars), best_fit, dseed(PROseed::global_rng));
         std::unique_ptr<TGraphAsymmErrors> err_band = 
             MCMC_prefit_errors
-            ? getMCMCErrorBand(mh_pre, MCMCburn, MCMCiter, config, prop, *metric_to_use, best_fit, priors, prior_covariance)
+            ? getMCMCErrorBand(mh_pre, fitconfig.MCMCburn, fitconfig.MCMCiter, config, prop, *metric_to_use, best_fit, priors, prior_covariance)
             : getErrorBand(config, prop, systs, binwidth_scale);
 
         Metropolis mh_post(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng), 0.2, fixed_pars), best_fit, dseed(PROseed::global_rng));
         log<LOG_INFO>(L"%1% || Starting global getPostFitErrorBand() ") % __func__;
-        std::unique_ptr<TGraphAsymmErrors> post_err_band = getMCMCErrorBand(mh_post, MCMCburn, MCMCiter, config, prop, *metric_to_use, best_fit, posteriors, spline_covariance, binwidth_scale);
+        std::unique_ptr<TGraphAsymmErrors> post_err_band = getMCMCErrorBand(mh_post, fitconfig.MCMCburn, fitconfig.MCMCiter, config, prop, *metric_to_use, best_fit, posteriors, spline_covariance, binwidth_scale);
         
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
         chi2text.AddText(hname.c_str());
