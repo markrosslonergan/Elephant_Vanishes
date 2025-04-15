@@ -11,29 +11,17 @@
 #include "PROpoisson.h"
 #include "PROcess.h"
 #include "PROsurf.h"
+#include "PROfc.h"
 #include "PROfitter.h"
 #include "PROmodel.h"
 #include "PROMCMC.h"
 #include "PROtocall.h"
 #include "PROseed.h"
 #include "PROversion.h"
+#include "PROplot.h"
 
 #include "CLI11.h"
 #include "LBFGSB.h"
-
-#include "TAttLine.h"
-#include "TAttMarker.h"
-#include "THStack.h"
-#include "TStyle.h"
-#include "TH1D.h"
-#include "TH2D.h"
-#include "TGraph.h"
-#include "TGraphAsymmErrors.h"
-#include "TCanvas.h"
-#include "TFile.h"
-#include "TRatioPlot.h"
-#include "TPaveText.h"
-#include "TTree.h"
 
 #include <Eigen/Eigen>
 
@@ -59,139 +47,6 @@ using namespace PROfit;
 log_level_t GLOBAL_LEVEL = LOG_INFO;
 std::wostream *OSTREAM = &wcout;
 
-struct fc_out{
-    float chi2_syst, chi2_osc, dmsq, sinsq2tmm;
-    Eigen::VectorXf best_fit_syst, best_fit_osc, syst_throw;
-};
-
-struct fc_args {
-    const size_t todo;
-    std::vector<float>* dchi2s;
-    std::vector<fc_out>* out;
-    const PROconfig config;
-    const PROpeller prop;
-    const PROsyst systs;
-    std::string chi2;
-    const Eigen::VectorXf phy_params;
-    const Eigen::MatrixXf L;
-    PROfitterConfig fitconfig;
-    uint32_t seed;
-    const int thread;
-    const bool binned;
-};
-
-void fc_worker(fc_args args) {
-    log<LOG_INFO>(L"%1% || FC for point %2%") % __func__ % args.phy_params;
-    std::mt19937 rng{args.seed};
-    std::unique_ptr<PROmodel> model = get_model_from_string(args.config.m_model_tag, args.prop);
-    std::unique_ptr<PROmodel> null_model = std::make_unique<NullModel>(args.prop);
-
-    PROchi::EvalStrategy strat = args.binned ? PROchi::BinnedChi2 : PROchi::EventByEvent;
-    Eigen::VectorXf throws = Eigen::VectorXf::Constant(model->nparams + args.systs.GetNSplines(), 0);
-    for(size_t i = 0; i < model->nparams; ++i) throws(i) = args.phy_params(i);
-    size_t nparams = model->nparams + args.systs.GetNSplines();
-    Eigen::VectorXf lb_osc = Eigen::VectorXf::Constant(nparams, -3.0);
-    Eigen::VectorXf ub_osc = Eigen::VectorXf::Constant(nparams, 3.0);
-    Eigen::VectorXf lb = Eigen::VectorXf::Constant(args.systs.GetNSplines(), -3.0);
-    Eigen::VectorXf ub = Eigen::VectorXf::Constant(args.systs.GetNSplines(), 3.0);
-    size_t nphys = model->nparams;
-    //set physics to correct values
-    for(size_t j=0; j<nphys; j++){
-        ub_osc(j) = model->ub(j);
-        lb_osc(j) = model->lb(j); 
-    }
-    //upper lower bounds for splines
-    for(size_t j = nphys; j < nparams; ++j) {
-        lb_osc(j) = args.systs.spline_lo[j-nphys];
-        ub_osc(j) = args.systs.spline_hi[j-nphys];
-        lb(j-nphys) = args.systs.spline_lo[j-nphys];
-        ub(j-nphys) = args.systs.spline_hi[j-nphys];
-    }
-    for(size_t u = 0; u < args.todo; ++u) {
-        log<LOG_INFO>(L"%1% | Thread #%2% Throw #%3%") % __func__ % args.thread % u;
-        std::normal_distribution<float> d;
-        Eigen::VectorXf throwC = Eigen::VectorXf::Constant(args.config.m_num_bins_total_collapsed, 0);
-        for(size_t i = 0; i < args.systs.GetNSplines(); i++)
-            throws(i+nphys) = d(rng);
-        for(size_t i = 0; i < args.config.m_num_bins_total_collapsed; i++)
-            throwC(i) = d(rng);
-        PROspec shifted = FillRecoSpectra(args.config, args.prop, args.systs, *model, throws, strat);
-        PROspec newSpec = PROspec::PoissonVariation(PROspec(CollapseMatrix(args.config, shifted.Spec()) + args.L * throwC, CollapseMatrix(args.config, shifted.Error())));
-        PROdata data(newSpec.Spec(), newSpec.Error());
-        //Metric Time
-        PROmetric *metric, *null_metric;
-        if(args.chi2 == "PROchi") {
-            metric = new PROchi("", args.config, args.prop, &args.systs, *model, data, !args.binned ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-            null_metric = new PROchi("", args.config, args.prop, &args.systs, *null_model, data, !args.binned ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-        } else if(args.chi2 == "PROCNP") {
-            metric = new PROCNP("", args.config, args.prop, &args.systs, *model, data, !args.binned ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-            null_metric = new PROCNP("", args.config, args.prop, &args.systs, *null_model, data, !args.binned ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-        } else if(args.chi2 == "Poisson") {
-            metric = new PROpoisson("", args.config, args.prop, &args.systs, *model, data, !args.binned ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-            null_metric = new PROpoisson("", args.config, args.prop, &args.systs, *null_model, data, !args.binned ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-        } else {
-            log<LOG_ERROR>(L"%1% || Unrecognized chi2 function %2%") % __func__ % args.chi2.c_str();
-            abort();
-        }
-
-        // No oscillations
-        std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
-        PROfitter fitter(ub, lb, args.fitconfig, dseed(rng));
-        float chi2_syst = fitter.Fit(*null_metric);
-
-        // With oscillations
-        PROfitter fitter_osc(ub_osc, lb_osc, args.fitconfig, dseed(rng));
-        float chi2_osc = fitter_osc.Fit(*metric); 
-
-        Eigen::VectorXf t = Eigen::VectorXf::Map(throws.data(), throws.size());
-
-        args.out->push_back({
-                chi2_syst, chi2_osc, 
-                std::pow(10.0f, fitter_osc.best_fit(0)), std::pow(10.0f, fitter_osc.best_fit(1)), 
-                fitter.best_fit, fitter_osc.best_fit.segment(2, nparams-2), t
-        });
-
-        args.dchi2s->push_back(std::abs(chi2_syst - chi2_osc ));
-        delete metric;
-        delete null_metric;
-    }
-}
-
-//some helper functions for PROplot
-std::map<std::string, std::unique_ptr<TH1D>> getCVHists(const PROspec & spec, const PROconfig& inconfig, bool scale = false, int other_index = -1);
-std::map<std::string, std::unique_ptr<TH2D>> covarianceTH2D(const PROsyst &syst, const PROconfig &config, const PROspec &cv);
-std::map<std::string, std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>>> getSplineGraphs(const PROsyst &systs, const PROconfig &config);
-std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, bool scale = false, int other_index = -1);
-template<class T, class P>
-std::unique_ptr<TGraphAsymmErrors> getMCMCErrorBand(Metropolis<T, P> met, size_t burnin, size_t iterations, const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, bool scale = false);
-
-enum class PlotOptions {
-    Default = 0,
-    CVasStack = 1 << 0,
-    AreaNormalized = 1 << 1,
-    BinWidthScaled = 1 << 2,
-    DataMCRatio = 1 << 3,
-    DataPostfitRatio = 1 << 4,
-};
-
-PlotOptions operator|(PlotOptions a, PlotOptions b) {
-    return static_cast<PlotOptions>(static_cast<int>(a) | static_cast<int>(b));
-}
-
-PlotOptions operator|=(PlotOptions &a, PlotOptions b) {
-    return a = a | b;
-}
-
-PlotOptions operator&(PlotOptions a, PlotOptions b) {
-    return static_cast<PlotOptions>(static_cast<int>(a) & static_cast<int>(b));
-}
-
-PlotOptions operator&=(PlotOptions &a, PlotOptions b) {
-    return a = a & b;
-}
-
-void plot_channels(const std::string &filename, const PROconfig &config, std::optional<PROspec> cv, std::optional<PROspec> best_fit, std::optional<PROdata> data, std::optional<TGraphAsymmErrors*> errband, std::optional<TGraphAsymmErrors*> posterrband, TPaveText *text, PlotOptions opt = PlotOptions::Default, int other_index = -1);
-
 int main(int argc, char* argv[])
 {
     gStyle->SetOptStat(0);
@@ -214,13 +69,12 @@ int main(int argc, char* argv[])
     size_t maxevents;
     int global_seed = -1;
     std::string log_file = "";
-
+    std::string fit_preset = "good";
+    static const std::unordered_set<std::string> allowed_preset = {"good","fast","overkill"};
     bool with_splines = false, binwidth_scale = false, area_normalized = false;
-
     std::vector<float> osc_params;
     std::map<std::string, float> injected_systs;
     std::vector<std::string> syst_list, systs_excluded;
-
     bool MCMC_prefit_errors = false;
     bool systs_only_profile = false;
 
@@ -242,9 +96,7 @@ int main(int argc, char* argv[])
 
     size_t nuniv;
 
-    size_t MCMCiter = 50'000;
-    size_t MCMCburn = 10'000;
-
+   
     //Global Arguments for all PROfit enables subcommands.
     app.add_option("-x,--xml", xmlname, "Input PROfit XML configuration file.")->required();
     app.add_option("-v,--verbosity", GLOBAL_LEVEL, "Verbosity Level [1-4]->[Error,Warning,Info,Debug].")->default_val(GLOBAL_LEVEL);
@@ -261,6 +113,7 @@ int main(int argc, char* argv[])
     app.add_option("--exclude-systs", systs_excluded, "List of systematics to exclude.")->excludes("--syst-list"); 
     app.add_option("--fit-options", global_fit_options, "Parameters for single, detailed global best fit LBFGSB.");
     app.add_option("--scan-fit-options", scan_fit_options, "Parameters for simpier, multiple best fits in PROfile/surface LBFGSB.");
+    app.add_option("-p,--preset", fit_preset, "Preset fitting params. Available `fast`, `good` and `overkill` .");
     app.add_option("-f, --rwfile", reweights_file, "File containing histograms for reweighting");
     app.add_option("-r, --mockrw",   mockreweights, "Vector of reweights to use for mock data");
     app.add_option("--log", log_file, "File to save log to. Warning: Will overwrite this file.");
@@ -324,7 +177,10 @@ int main(int argc, char* argv[])
 
     log<LOG_INFO>(L" %1% ") % getIcon().c_str()  ;
     std::string final_output_tag =analysis_tag +"_"+output_tag;
+ 
+
     
+
     log<LOG_INFO>(L"%1% || ##################################################################") % __func__  ;
     log<LOG_INFO>(L"%1% || ####################### PROfit version v%2% ######################") % __func__ % PROJECT_VERSION_STR ;
     log<LOG_INFO>(L"%1% || ##################################################################") % __func__  ;
@@ -536,222 +392,20 @@ int main(int argc, char* argv[])
     
     PROsyst allcovsyst = systs.allsplines2cov(config, prop, dseed(PROseed::global_rng));
 
+    log<LOG_INFO>(L"%1% || Starting from fit preset :  %2%.")% __func__ % fit_preset.c_str();
+    if (allowed_preset.find(fit_preset) == allowed_preset.end()) {
+        log<LOG_ERROR>(L"%1% || ERROR allowed fit_presets are good, fast or overkill. You entred : %2%.")% __func__ % fit_preset.c_str();
+                return 1;
+    }
     //Some global minimizer params
     // This runs for the single best gobal fit
-    PROfitterConfig fitconfig;
-    fitconfig.param.epsilon = 1e-6;
-    fitconfig.param.max_iterations = 0;
-    fitconfig.param.max_linesearch = 400;
-    fitconfig.param.delta = 1e-6;
-    fitconfig.n_multistart = 3000;
-    fitconfig.n_swarm_particles = 45;
-    fitconfig.n_swarm_iterations = 250;
-    fitconfig.n_localfit=3;
-    fitconfig.n_max_local_retries = 4;
-
-    log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the detailed global minimia finder. Ensure this is more detailed than quicker scan parameters below. ") % __func__ ;
-    for(const auto &[param_name, value]: global_fit_options) {
-        log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
-        if(param_name == "epsilon") {
-            fitconfig.param.epsilon = value;
-        } else if(param_name == "delta") {
-            fitconfig.param.delta = value;
-        } else if(param_name == "m") {
-            fitconfig.param.m = value;
-            if(value < 3) {
-                log<LOG_WARNING>(L"%1% || Number of corrections to approximate inverse Hessian in"
-                                 L" L-BFGS-B is recommended to be at least 3, provided value is %2%."
-                                 L" Note: this is controlled via --fit-options m.")
-                    % __func__ % value;
-            }
-        } else if(param_name == "epsilon_rel") {
-            fitconfig.param.epsilon_rel = value;
-        } else if(param_name == "past") {
-            fitconfig.param.past = value;
-            if(value == 0) {
-                log<LOG_WARNING>(L"%1% || L-BFGS-B 'past' parameter set to 0. This will disable delta convergence test")
-                    % __func__;
-            }
-        } else if(param_name == "max_iterations") {
-            fitconfig.param.max_iterations = value;
-        } else if(param_name == "max_submin") {
-            fitconfig.param.max_submin = value;
-        } else if(param_name == "max_linesearch") {
-            fitconfig.param.max_linesearch = value;
-        } else if(param_name == "min_step") {
-            fitconfig.param.min_step = value;
-            log<LOG_WARNING>(L"%1% || Modifying the minimum step size in the line search to be %2%."
-                             L" This is not usually needed according to the LBFGSpp documentation.")
-                % __func__ % value;
-        } else if(param_name == "max_step") {
-            fitconfig.param.max_step = value;
-            log<LOG_WARNING>(L"%1% || Modifying the maximum step size in the line search to be %2%."
-                             L" This is not usually needed according to the LBFGSpp documentation.")
-                % __func__ % value;
-        } else if(param_name == "ftol") {
-            fitconfig.param.ftol = value;
-        } else if(param_name == "wolfe") {
-            fitconfig.param.wolfe = value;
-        } else if(param_name == "n_multistart") {
-            fitconfig.n_multistart = value;
-            if(fitconfig.n_multistart < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 multistart point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        } else if(param_name == "n_localfit") {
-            fitconfig.n_localfit = value;
-            if(fitconfig.n_localfit < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 local fit point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "n_swarm_particles") {
-            fitconfig.n_swarm_particles = value;
-            if(fitconfig.n_swarm_particles < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 PSO swarm particle point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "n_swarm_iterations") {
-            fitconfig.n_swarm_iterations = value;
-            if(fitconfig.n_swarm_iterations < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 swarm_iterations point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "MCMC-Burnin") {
-            MCMCburn = value;
-            if(MCMCburn < 1) {
-                log<LOG_WARNING>(L"%1% || Warning: Running without any burnin for MCMC.");
-            }
-        }else if(param_name == "MCMC-Iterations") {
-            MCMCiter = value;
-            if(MCMCiter < 1) {
-                log<LOG_ERROR>(L"%1% || Requested to run MCMC with no iterations.");
-            }
-        } else {
-            log<LOG_WARNING>(L"%1% || Unrecognized LBFGSB parameter %2%. Will ignore.") 
-                % __func__ % param_name.c_str();
-        }
-    }
-    try {
-        fitconfig.print();
-    } catch(std::invalid_argument &except) {
-        log<LOG_ERROR>(L"%1% || Invalid L-BFGS-B parameters: %2%") % __func__ % except.what();
-        log<LOG_ERROR>(L"Terminating.");
-        exit(EXIT_FAILURE);
-    }
-
+    PROfitterConfig fitconfig(global_fit_options, fit_preset, false);
+    
 
 
     //Some Scan minimizer params.
     // This runs lots during PROfile and surface. 
-    PROfitterConfig scanFitConfig;
-    scanFitConfig.param.epsilon = 1e-6;
-    scanFitConfig.param.max_iterations = 0;
-    scanFitConfig.param.max_linesearch = 250;
-    scanFitConfig.param.delta = 1e-6;
-    scanFitConfig.n_multistart = 1250;
-    scanFitConfig.n_swarm_particles = 5;
-    scanFitConfig.n_swarm_iterations = 100;
-    scanFitConfig.n_localfit=2;
-    scanFitConfig.n_max_local_retries = 3;
-
-    log<LOG_INFO>(L"%1% ||Fit and  L-BFGS-B parameters for the quicker scans like PROfile and PROsurface. Ensure global above is more detailed. ") % __func__ ;
-    for(const auto &[param_name, value]: scan_fit_options) {
-        log<LOG_WARNING>(L"%1% || L-BFGS-B %2% set to %3% ") % __func__% param_name.c_str() % value ;
-        if(param_name == "epsilon") {
-            scanFitConfig.param.epsilon = value;
-        } else if(param_name == "delta") {
-            scanFitConfig.param.delta = value;
-        } else if(param_name == "m") {
-            scanFitConfig.param.m = value;
-            if(value < 3) {
-                log<LOG_WARNING>(L"%1% || Number of corrections to approximate inverse Hessian in"
-                                 L" L-BFGS-B is recommended to be at least 3, provided value is %2%."
-                                 L" Note: this is controlled via --fit-options m.")
-                    % __func__ % value;
-            }
-        } else if(param_name == "epsilon_rel") {
-            scanFitConfig.param.epsilon_rel = value;
-        } else if(param_name == "past") {
-            scanFitConfig.param.past = value;
-            if(value == 0) {
-                log<LOG_WARNING>(L"%1% || L-BFGS-B 'past' parameter set to 0. This will disable delta convergence test")
-                    % __func__;
-            }
-        } else if(param_name == "max_iterations") {
-            scanFitConfig.param.max_iterations = value;
-        } else if(param_name == "max_submin") {
-            scanFitConfig.param.max_submin = value;
-        } else if(param_name == "max_linesearch") {
-            scanFitConfig.param.max_linesearch = value;
-        } else if(param_name == "min_step") {
-            scanFitConfig.param.min_step = value;
-            log<LOG_WARNING>(L"%1% || Modifying the minimum step size in the line search to be %2%."
-                             L" This is not usually needed according to the LBFGSpp documentation.")
-                % __func__ % value;
-        } else if(param_name == "max_step") {
-            scanFitConfig.param.max_step = value;
-            log<LOG_WARNING>(L"%1% || Modifying the maximum step size in the line search to be %2%."
-                             L" This is not usually needed according to the LBFGSpp documentation.")
-                % __func__ % value;
-        } else if(param_name == "ftol") {
-            scanFitConfig.param.ftol = value;
-        } else if(param_name == "wolfe") {
-            scanFitConfig.param.wolfe = value;
-        } else if(param_name == "n_multistart") {
-            scanFitConfig.n_multistart = value;
-            if(scanFitConfig.n_multistart < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 multistart point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        } else if(param_name == "n_localfit") {
-            scanFitConfig.n_localfit = value;
-            if(scanFitConfig.n_localfit < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 local fit point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "n_swarm_particles") {
-            scanFitConfig.n_swarm_particles = value;
-            if(scanFitConfig.n_swarm_particles < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 PSO swarm particle point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "n_swarm_iterations") {
-            scanFitConfig.n_swarm_iterations = value;
-            if(scanFitConfig.n_swarm_iterations < 1) {
-                log<LOG_ERROR>(L"%1% || Expected to run at least 1 swarm_iterations point. Provided value is %2%.")
-                    % __func__ % value;
-                return 1;
-            }
-        }else if(param_name == "MCMC-Burnin") {
-            MCMCburn = value;
-            if(MCMCburn < 1) {
-                log<LOG_WARNING>(L"%1% || Warning: Running without any burnin for MCMC.");
-            }
-        }else if(param_name == "MCMC-Iterations") {
-            MCMCiter = value;
-            if(MCMCiter < 1) {
-                log<LOG_ERROR>(L"%1% || Requested to run MCMC with no iterations.");
-            }
-        } else {
-            log<LOG_WARNING>(L"%1% || Unrecognized LBFGSB parameter %2%. Will ignore.") 
-                % __func__ % param_name.c_str();
-        }
-    }
-    try {
-        scanFitConfig.print();
-    } catch(std::invalid_argument &except) {
-        log<LOG_ERROR>(L"%1% || Invalid L-BFGS-B parameters: %2%") % __func__ % except.what();
-        log<LOG_ERROR>(L"Terminating.");
-        exit(EXIT_FAILURE);
-    }
-
+    PROfitterConfig scanFitConfig(scan_fit_options, fit_preset, true);
 
 
 
@@ -825,7 +479,7 @@ int main(int argc, char* argv[])
         log<LOG_INFO>(L"%1% || ################################################") % __func__;
         
         // TODO: Not sure I understand this covariance matrix
-        log<LOG_INFO>(L"%1% || Starting a metropolis hastings chain to estimate the covariace matrix aroud the above best fit. Run and Burn is (%2%,%3%);") % __func__%MCMCiter % MCMCburn;
+        log<LOG_INFO>(L"%1% || Starting a metropolis hastings chain to estimate the covariace matrix aroud the above best fit. Run and Burn is (%2%,%3%);") % __func__%fitconfig.MCMCiter % fitconfig.MCMCburn;
         Metropolis mh(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng)), best_fit, dseed(PROseed::global_rng));
 
         Eigen::MatrixXf covmat = Eigen::MatrixXf::Constant(nparams, nparams, 0);
@@ -834,7 +488,7 @@ int main(int argc, char* argv[])
             covmat += (value-best_fit) * (value-best_fit).transpose();
             count += 1; 
         };
-        mh.run(MCMCburn,MCMCiter, action);
+        mh.run(fitconfig.MCMCburn,fitconfig.MCMCiter, action);
 
         TH2D covhist("ch", "", nparams, 0, nparams, nparams, 0, nparams);
         TH2D physhist("ph","", nparams, 0, nparams, nphys, 0, nphys);
@@ -859,7 +513,7 @@ int main(int argc, char* argv[])
         c1.Print((final_output_tag+"_postfit_cov.pdf").c_str());
         physhist.Draw("colz");
         c1.Print("phys_cov.pdf");
-        log<LOG_INFO>(L"%1% || MCMC acceptance is  %2%. ") % __func__% ((double)count /MCMCiter);
+        log<LOG_INFO>(L"%1% || MCMC acceptance is  %2%. ") % __func__% ((double)count /fitconfig.MCMCiter);
 
         std::string hname = "#chi^{2}/ndf = " + to_string(chi2) + "/" + to_string(config.m_num_bins_total_collapsed);
         PROspec cv = FillCVSpectrum(config, prop, true);
@@ -883,12 +537,12 @@ int main(int argc, char* argv[])
         Metropolis mh_pre(prior_only_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng), 0.2, fixed_pars), best_fit, dseed(PROseed::global_rng));
         std::unique_ptr<TGraphAsymmErrors> err_band = 
             MCMC_prefit_errors
-            ? getMCMCErrorBand(mh_pre, MCMCburn, MCMCiter, config, prop, *metric_to_use, best_fit, priors, prior_covariance)
+            ? getMCMCErrorBand(mh_pre, fitconfig.MCMCburn, fitconfig.MCMCiter, config, prop, *metric_to_use, best_fit, priors, prior_covariance)
             : getErrorBand(config, prop, systs, binwidth_scale);
 
         Metropolis mh_post(simple_target{*metric_to_use}, simple_proposal(*metric_to_use, dseed(PROseed::global_rng), 0.2, fixed_pars), best_fit, dseed(PROseed::global_rng));
         log<LOG_INFO>(L"%1% || Starting global getPostFitErrorBand() ") % __func__;
-        std::unique_ptr<TGraphAsymmErrors> post_err_band = getMCMCErrorBand(mh_post, MCMCburn, MCMCiter, config, prop, *metric_to_use, best_fit, posteriors, spline_covariance, binwidth_scale);
+        std::unique_ptr<TGraphAsymmErrors> post_err_band = getMCMCErrorBand(mh_post, fitconfig.MCMCburn, fitconfig.MCMCiter, config, prop, *metric_to_use, best_fit, posteriors, spline_covariance, binwidth_scale);
         
         TPaveText chi2text(0.59, 0.50, 0.89, 0.59, "NDC");
         chi2text.AddText(hname.c_str());
@@ -1481,7 +1135,9 @@ int main(int argc, char* argv[])
             outs.emplace_back();
             fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, systs, chi2, pparams, llt.matrixL(), scanFitConfig,(*myseed.getThreadSeeds())[i], (int)i, !eventbyevent};
 
-            threads.emplace_back(fc_worker, args);
+            threads.emplace_back([args]() {
+             PROfit::fc_worker(args);
+            });
         }
         for(auto&& t: threads) {
             t.join();
@@ -1561,472 +1217,4 @@ int main(int argc, char* argv[])
 }
 
 
-
-//******************************** Functions to help plotting, move to a src later ************************************
-
-std::map<std::string, std::unique_ptr<TH1D>> getCVHists(const PROspec &spec, const PROconfig& inconfig, bool scale, int other_index) {
-    std::map<std::string, std::unique_ptr<TH1D>> hists;  
-
-    size_t global_subchannel_index = 0;
-    size_t global_channel_index = 0;
-    for(size_t im = 0; im < inconfig.m_num_modes; im++){
-        for(size_t id =0; id < inconfig.m_num_detectors; id++){
-            for(size_t ic = 0; ic < inconfig.m_num_channels; ic++){
-                for(size_t sc = 0; sc < inconfig.m_num_subchannels[ic]; sc++){
-                    const std::string& subchannel_name  = inconfig.m_fullnames[global_subchannel_index];
-                    const std::string& color = inconfig.m_subchannel_colors[ic][sc];
-                    int rcolor = color == "NONE" ? kRed - 7 : inconfig.HexToROOTColor(color);
-                    std::unique_ptr<TH1D> htmp = std::make_unique<TH1D>(spec.toTH1D(inconfig, global_subchannel_index, other_index));
-                    htmp->SetLineWidth(1);
-                    htmp->SetLineColor(kBlack);
-                    htmp->SetFillColor(rcolor);
-                    if(scale) htmp->Scale(1,"width");
-                    hists[subchannel_name] = std::move(htmp);
-
-                    log<LOG_DEBUG>(L"%1% || Printot %2% %3% %4% %5% %6% : Integral %7% ") % __func__ % global_channel_index % global_subchannel_index % subchannel_name.c_str() % sc % ic % hists[subchannel_name]->Integral();
-                    ++global_subchannel_index;
-                }//end subchan
-                ++global_channel_index;
-            }//end chan
-        }//end det
-    }//end mode
-    return hists;
-}
-
-std::map<std::string, std::unique_ptr<TH2D>> covarianceTH2D(const PROsyst &syst, const PROconfig &config, const PROspec &cv) {
-    std::map<std::string, std::unique_ptr<TH2D>> ret;
-    Eigen::MatrixXf fractional_cov = syst.fractional_covariance;
-    Eigen::MatrixXf diag = cv.Spec().array().matrix().asDiagonal(); 
-    Eigen::MatrixXf full_covariance =  diag*fractional_cov*diag;
-    Eigen::MatrixXf collapsed_full_covariance =  CollapseMatrix(config,full_covariance);  
-    Eigen::VectorXf collapsed_cv = CollapseMatrix(config, cv.Spec());
-    Eigen::MatrixXf collapsed_cv_inv_diag = collapsed_cv.asDiagonal().inverse();
-    Eigen::MatrixXf collapsed_frac_cov = collapsed_cv_inv_diag * collapsed_full_covariance * collapsed_cv_inv_diag;
-
-    std::unique_ptr<TH2D> cov_hist = std::make_unique<TH2D>("cov", "Fractional Covariance Matrix;Bin # ;Bin #", config.m_num_bins_total, 0, config.m_num_bins_total, config.m_num_bins_total, 0, config.m_num_bins_total);
-    std::unique_ptr<TH2D> collapsed_cov_hist = std::make_unique<TH2D>("ccov", "Collapsed Fractional Covariance Matrix;Bin # ;Bin #", config.m_num_bins_total_collapsed, 0, config.m_num_bins_total_collapsed, config.m_num_bins_total_collapsed, 0, config.m_num_bins_total_collapsed);
-
-    std::unique_ptr<TH2D> cor_hist = std::make_unique<TH2D>("cor", "Correlation Matrix;Bin # ;Bin #", config.m_num_bins_total, 0, config.m_num_bins_total, config.m_num_bins_total, 0, config.m_num_bins_total);
-    std::unique_ptr<TH2D> collapsed_cor_hist = std::make_unique<TH2D>("ccor", "Collapsed Correlation Matrix;Bin # ;Bin #", config.m_num_bins_total_collapsed, 0, config.m_num_bins_total_collapsed, config.m_num_bins_total_collapsed, 0, config.m_num_bins_total_collapsed);
-
-    for(size_t i = 0; i < config.m_num_bins_total; ++i)
-        for(size_t j = 0; j < config.m_num_bins_total; ++j){
-            cov_hist->SetBinContent(i+1,j+1,fractional_cov(i,j));
-            cor_hist->SetBinContent(i+1,j+1,fractional_cov(i,j)/(sqrt(fractional_cov(i,i))*sqrt(fractional_cov(j,j))));
-        }
-
-    for(size_t i = 0; i < config.m_num_bins_total_collapsed; ++i)
-        for(size_t j = 0; j < config.m_num_bins_total_collapsed; ++j){
-            collapsed_cov_hist->SetBinContent(i+1,j+1,collapsed_frac_cov(i,j));
-            collapsed_cor_hist->SetBinContent(i+1,j+1,collapsed_frac_cov(i,j)/(sqrt(collapsed_frac_cov(i,i))*sqrt(collapsed_frac_cov(j,j))));
-        }
-
-    ret["total_frac_cov"] = std::move(cov_hist);
-    ret["collapsed_total_frac_cov"] = std::move(collapsed_cov_hist);
-    ret["total_cor"] = std::move(cor_hist);
-    ret["collapsed_total_cor"] = std::move(collapsed_cor_hist);
-
-    for(const auto &name: syst.covar_names) {
-        const Eigen::MatrixXf &covar = syst.GrabMatrix(name);
-        const Eigen::MatrixXf &corr = syst.GrabCorrMatrix(name);
-
-        std::unique_ptr<TH2D> cov_h = std::make_unique<TH2D>(("cov"+name).c_str(), (name+" Fractional Covariance;Bin # ;Bin #").c_str(), config.m_num_bins_total, 0, config.m_num_bins_total, config.m_num_bins_total, 0, config.m_num_bins_total);
-        std::unique_ptr<TH2D> corr_h = std::make_unique<TH2D>(("cor"+name).c_str(), (name+" Correlation;Bin # ;Bin #").c_str(), config.m_num_bins_total, 0, config.m_num_bins_total, config.m_num_bins_total, 0, config.m_num_bins_total);
-        for(size_t i = 0; i < config.m_num_bins_total; ++i){
-            for(size_t j = 0; j < config.m_num_bins_total; ++j){
-                cov_h->SetBinContent(i+1,j+1,covar(i,j));
-                corr_h->SetBinContent(i+1,j+1,corr(i,j));
-            }
-        }
-
-        ret[name+"_cov"] = std::move(cov_h);
-        ret[name+"_corr"] = std::move(corr_h);
-    }
-
-    return ret;
-}
-
-std::map<std::string, std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>>> 
-getSplineGraphs(const PROsyst &systs, const PROconfig &config) {
-    std::map<std::string, std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>>> spline_graphs;
-
-    for(size_t i = 0; i < systs.GetNSplines(); ++i) {
-        const std::string &name = systs.spline_names[i];
-        const PROsyst::Spline &spline = systs.GrabSpline(name);
-        //using Spline = std::vector<std::vector<std::pair<float, std::array<float, 4>>>>;
-        std::vector<std::pair<std::unique_ptr<TGraph>,std::unique_ptr<TGraph>>> bin_graphs;
-        size_t nbins = 
-            systs.spline_binnings[i] == -2 ? config.m_num_truebins_total :
-            systs.spline_binnings[i] == -1 ? config.m_num_bins_total
-                                           : config.m_num_other_bins_total[systs.spline_binnings[i]];
-        bin_graphs.reserve(nbins);
-
-        for(size_t j = 0; j < nbins; ++j) {
-            const std::vector<std::pair<float, std::array<float, 4>>> &spline_for_bin = spline[j];
-            std::unique_ptr<TGraph> curve = std::make_unique<TGraph>();
-            std::unique_ptr<TGraph> fixed_pts = std::make_unique<TGraph>();
-            for(size_t k = 0; k < spline_for_bin.size(); ++k) {
-                //const auto &[lo, coeffs] = spline_for_bin[k];
-                float lo = spline_for_bin[k].first;
-                std::array<float, 4> coeffs = spline_for_bin[k].second;
-                float hi = k < spline_for_bin.size() - 1 ? spline_for_bin[k+1].first : systs.spline_hi[i];
-                auto fn = [coeffs](float shift){
-                    return coeffs[0] + coeffs[1]*shift + coeffs[2]*shift*shift + coeffs[3]*shift*shift*shift;
-                };
-                fixed_pts->SetPoint(fixed_pts->GetN(), lo, fn(0)); 
-                if(k == spline_for_bin.size() - 1)
-                    fixed_pts->SetPoint(fixed_pts->GetN(), hi, fn(hi - lo));
-                float width = (hi - lo) / 20;
-                for(size_t l = 0; l < 20; ++l)
-                    curve->SetPoint(curve->GetN(), lo + l * width, fn(l * width));
-            }
-            bin_graphs.push_back(std::make_pair(std::move(fixed_pts), std::move(curve)));
-        }
-        spline_graphs[name] = std::move(bin_graphs);
-    }
-
-    return spline_graphs;
-}
-
-std::unique_ptr<TGraphAsymmErrors> getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, bool scale, int other_index) {
-    //TODO: Only works with 1 mode/detector/channel
-    Eigen::VectorXf cv = other_index < 0 ? CollapseMatrix(config, FillCVSpectrum(config, prop, true).Spec()) :
-        CollapseMatrix(config, FillOtherCVSpectrum(config, prop, other_index).Spec(), other_index);
-    std::vector<float> edges = other_index < 0 ? config.GetChannelBinEdges(0) : config.GetChannelOtherBinEdges(0, other_index);
-    log<LOG_DEBUG>(L"%1% || For other var %2% the cv is %3% and the edges are %4%")
-        % __func__ % other_index % cv % edges;
-    std::vector<float> centers;
-    size_t nerrorsample = 5000;
-    for(size_t i = 0; i < edges.size() - 1; ++i)
-        centers.push_back((edges[i+1] + edges[i])/2);
-    std::vector<Eigen::VectorXf> specs;
-    std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
-    for(size_t i = 0; i < nerrorsample; ++i)
-        specs.push_back(FillSystRandomThrow(config, prop, syst, dseed(PROseed::global_rng), other_index).Spec());
-    //specs.push_back(CollapseMatrix(config, FillSystRandomThrow(config, prop, syst).Spec()));
-    TH1D tmphist("th", "", cv.size(), edges.data());
-    for(int i = 0; i < cv.size(); ++i)
-        tmphist.SetBinContent(i+1, cv(i));
-    if(scale) tmphist.Scale(1, "width");
-    //std::unique_ptr<TGraphAsymmErrors> ret = std::make_unique<TGraphAsymmErrors>(cv.size(), centers.data(), cv.data());
-    std::unique_ptr<TGraphAsymmErrors> ret = std::make_unique<TGraphAsymmErrors>(&tmphist);
-    for(int i = 0; i < cv.size(); ++i) {
-        std::vector<float> binconts(nerrorsample);
-        for(size_t j = 0; j < nerrorsample; ++j) {
-            binconts[j] = specs[j](i);
-        }
-        float scale_factor = tmphist.GetBinContent(i+1)/cv(i);
-        if(std::isnan(scale_factor)) scale_factor = 1;
-        std::sort(binconts.begin(), binconts.end());
-        float ehi = std::abs((binconts[5*840] - cv(i))*scale_factor);
-        float elo = std::abs((cv(i) - binconts[5*160])*scale_factor);
-        ret->SetPointEYhigh(i, ehi);
-        ret->SetPointEYlow(i, elo);
-
-        log<LOG_DEBUG>(L"%1% || ErrorBand bin %2% %3% %4% %5% %6% %7%") % __func__ % i % cv(i) % ehi % elo % scale_factor % tmphist.GetBinContent(i+1);
-    }
-    return ret;
-}
-
-template<class T, class P>
-std::unique_ptr<TGraphAsymmErrors> getMCMCErrorBand(Metropolis<T,P> mh, size_t burnin, size_t iterations, const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, bool scale) {
-    for(size_t i = 0; i < metric.GetSysts().GetNSplines(); ++i)
-        posteriors.emplace_back("", (";"+config.m_mcgen_variation_plotname_map.at(metric.GetSysts().spline_names[i])).c_str(), 60, -3, 3);
-
-    Eigen::VectorXf cv = FillRecoSpectra(config, prop, metric.GetSysts(), metric.GetModel(), best_fit, true).Spec();
-    Eigen::MatrixXf L = metric.GetSysts().DecomposeFractionalCovariance(config, cv);
-    std::normal_distribution<float> nd;
-    Eigen::VectorXf throws = Eigen::VectorXf::Constant(config.m_num_bins_total_collapsed, 0);
-
-    int nspline = metric.GetSysts().GetNSplines();
-    int nphys = metric.GetModel().nparams;
-    Eigen::VectorXf splines_bf = best_fit.segment(nphys, nspline);
-    post_covar = Eigen::MatrixXf::Constant(nspline, nspline, 0);
-    size_t accepted = 0;
-    std::vector<Eigen::VectorXf> specs;
-    const auto action = [&](const Eigen::VectorXf &value) {
-        accepted += 1;
-        for(size_t i = 0; i < config.m_num_bins_total_collapsed; ++i)
-            throws(i) = nd(PROseed::global_rng);
-        specs.push_back(CollapseMatrix(config, FillRecoSpectra(config, prop, metric.GetSysts(), metric.GetModel(), value, true).Spec())+L*throws);
-        for(size_t i = 0; i < metric.GetSysts().GetNSplines(); ++i)
-            posteriors[i].Fill(value(i+nphys));
-        Eigen::VectorXf splines = value.segment(nphys, nspline);
-        Eigen::VectorXf diff = splines-splines_bf;
-        post_covar += diff * diff.transpose();
-    };
-    mh.run(burnin, iterations, action);
-    post_covar /= accepted;
-
-    //TODO: Only works with 1 mode/detector/channel
-    cv = CollapseMatrix(config, cv);
-    std::vector<float> edges = config.GetChannelBinEdges(0);
-    std::vector<float> centers;
-    for(size_t i = 0; i < edges.size() - 1; ++i)
-        centers.push_back((edges[i+1] + edges[i])/2);
-    TH1D tmphist("th", "", cv.size(), edges.data());
-    for(int i = 0; i < cv.size(); ++i)
-        tmphist.SetBinContent(i+1, cv(i));
-    if(scale) tmphist.Scale(1, "width");
-    std::unique_ptr<TGraphAsymmErrors> ret = std::make_unique<TGraphAsymmErrors>(&tmphist);
-    for(int i = 0; i < cv.size(); ++i) {
-        std::vector<float> binconts(specs.size());
-        for(size_t j = 0; j < specs.size(); ++j) {
-            binconts[j] = specs[j](i);
-        }
-        float scale_factor = tmphist.GetBinContent(i+1)/cv(i);
-        if(std::isnan(scale_factor)) scale_factor = 1;
-        std::sort(binconts.begin(), binconts.end());
-        float ehi = std::abs((binconts[0.84*specs.size()] - cv(i))*scale_factor);
-        float elo = std::abs((cv(i) - binconts[0.16*specs.size()])*scale_factor);
-        ret->SetPointEYhigh(i, ehi);
-        ret->SetPointEYlow(i, elo);
-        log<LOG_DEBUG>(L"%1% || ErrorBand bin %2% %3% %4% %5% %6% %7%") % __func__ % i % cv(i) % ehi % elo % scale_factor % tmphist.GetBinContent(i+1);
-    }
-    return ret;
-}
-
-void plot_channels(const std::string &filename, const PROconfig &config, std::optional<PROspec> cv, std::optional<PROspec> best_fit, std::optional<PROdata> data, std::optional<TGraphAsymmErrors*> errband, std::optional<TGraphAsymmErrors*> posterrband, TPaveText *text, PlotOptions opt, int other_index) {
-    TCanvas c;
-    c.Print((filename+"[").c_str());
-
-    std::map<std::string, std::unique_ptr<TH1D>> cvhists;
-    if(cv) cvhists = getCVHists(*cv, config, (bool)(opt & PlotOptions::BinWidthScaled), other_index);
-
-    Eigen::VectorXf bf_spec;
-    if(best_fit) {
-        bf_spec = other_index < 0 ? CollapseMatrix(config, best_fit->Spec()) : CollapseMatrix(config, best_fit->Spec(), other_index);
-    }
-
-    std::string ytitle = bool(opt&PlotOptions::AreaNormalized)
-        ? "Area Normalized"
-        : bool(opt&PlotOptions::BinWidthScaled) 
-            ? "Events/GeV" 
-            : "Events";
-
-    size_t global_subchannel_index = 0;
-    size_t global_channel_index = 0;
-    for(size_t mode = 0; mode < config.m_num_modes; ++mode) {
-        for(size_t det = 0; det < config.m_num_detectors; ++det) {
-            for(size_t channel = 0; channel < config.m_num_channels; ++channel) {
-                size_t channel_nbins = other_index < 0 ? config.m_channel_num_bins[channel] : config.m_channel_num_other_bins[channel][other_index];
-                std::vector<float> edges = other_index < 0 ? config.GetChannelBinEdges(0) : config.GetChannelOtherBinEdges(0, other_index);
-                std::string xtitle = other_index < 0 ? config.m_channel_units[channel] : config.m_channel_other_units[channel][other_index];
-                std::string hist_title = config.m_channel_plotnames[channel]+";"+xtitle+";"+ytitle;
-                std::unique_ptr<TLegend> leg = std::make_unique<TLegend>(0.59,0.89,0.59,0.89);
-                leg->SetFillStyle(0);
-                leg->SetLineWidth(0);
-                TH1D cv_hist(std::to_string(global_channel_index).c_str(), hist_title.c_str(), channel_nbins, edges.data());
-                cv_hist.SetLineWidth(3);
-                cv_hist.SetLineColor(kBlue);
-                cv_hist.SetFillStyle(0);
-                for(size_t bin = 0; bin < channel_nbins; ++bin) {
-                    cv_hist.SetBinContent(bin+1, 0);
-                }
-
-                // Set up TPads for ratios, unused if ratio option not chosen
-                TPad p1("p1", "p1", 0, 0.25, 1, 1);
-                p1.SetBottomMargin(0);
-
-                TPad p2("p2", "p2", 0, 0, 1, 0.25);
-                p2.SetTopMargin(0);
-                p2.SetBottomMargin(0.3);
-
-                THStack *cvstack = NULL;
-                if(cv) {
-                    if(bool(opt&PlotOptions::CVasStack)) cvstack = new THStack(std::to_string(global_channel_index).c_str(), hist_title.c_str());
-                    for(size_t subchannel = 0; subchannel < config.m_num_subchannels[channel]; ++subchannel){
-                        const std::string& subchannel_name  = config.m_fullnames[global_subchannel_index];
-                        if(bool(opt&PlotOptions::CVasStack)) {
-                            cvstack->Add(cvhists[subchannel_name].get());
-                            leg->AddEntry(cvhists[subchannel_name].get(), config.m_subchannel_plotnames[channel][subchannel].c_str() ,"f");
-                        }
-                        cv_hist.Add(cvhists[subchannel_name].get());
-                        ++global_subchannel_index;
-                    }
-                    if(bool(opt&PlotOptions::AreaNormalized)) {
-                        float integral = cv_hist.Integral();
-                        cv_hist.Scale(1 / integral);
-                        if(bool(opt&PlotOptions::CVasStack)) {
-                            TList *stlists = (TList*)cvstack->GetHists();
-                            for(const auto&& obj: *stlists){
-                                ((TH1*)obj)->Scale(1/integral);
-                            }
-                        }
-                    }
-                }
-
-                TGraphAsymmErrors *channel_errband = NULL;
-                if(errband) {
-                    channel_errband = new TGraphAsymmErrors(&cv_hist);
-                    int channel_start = other_index < 0 ? config.GetCollapsedGlobalBinStart(global_channel_index) : config.GetCollapsedGlobalOtherBinStart(global_channel_index, other_index);
-                    for(size_t bin = 0; bin < channel_nbins; ++bin) {
-                        float scale = 1.0;
-                        if(bool(opt&PlotOptions::AreaNormalized)) {
-                            scale = channel_errband->GetPointY(bin) / (*errband)->GetPointY(bin+channel_start);
-                        }
-                        channel_errband->SetPointEYhigh(bin, scale*(*errband)->GetErrorYhigh(bin+channel_start));
-                        channel_errband->SetPointEYlow(bin, scale*(*errband)->GetErrorYlow(bin+channel_start));
-                    }
-                    channel_errband->SetFillColor(kGray+2);
-                    //channel_errband->SetFillColorAlpha(kGray, 0.35);
-                    channel_errband->SetFillStyle(3002);
-                    channel_errband->SetLineColor(kGray+2);
-                    channel_errband->SetLineWidth(1);
-                    leg->AddEntry(channel_errband, "#pm 1#sigma", "f");
-                }
-
-                TH1D bf_hist(("bf"+std::to_string(global_channel_index)).c_str(), hist_title.c_str(), channel_nbins, edges.data());
-                if(best_fit) {
-                    int channel_start = other_index < 0 ? config.GetCollapsedGlobalBinStart(global_channel_index) : config.GetCollapsedGlobalOtherBinStart(global_channel_index, other_index);
-                    for(size_t bin = 0; bin < channel_nbins; ++bin) {
-                        bf_hist.SetBinContent(bin+1, bf_spec(bin+channel_start));
-                    }
-                    bf_hist.SetLineColor(kGreen);
-                    bf_hist.SetLineWidth(3);
-                    leg->AddEntry(&bf_hist, "Best Fit", "l");
-                    if(bool(opt&PlotOptions::AreaNormalized))
-                        bf_hist.Scale(1.0/bf_hist.Integral());
-                }
-
-                TGraphAsymmErrors *post_channel_errband = NULL;
-                if(posterrband) {
-                    post_channel_errband = new TGraphAsymmErrors(&bf_hist);
-                    int channel_start = other_index < 0 ? config.GetCollapsedGlobalBinStart(global_channel_index) : config.GetCollapsedGlobalOtherBinStart(global_channel_index, other_index);
-                    for(size_t bin = 0; bin < channel_nbins; ++bin) {
-                        float scale = 1.0;
-                        if(bool(opt&PlotOptions::AreaNormalized)) {
-                            scale = post_channel_errband->GetPointY(bin) / (*posterrband)->GetPointY(bin+channel_start);
-                        }
-                        post_channel_errband->SetPointEYhigh(bin, scale*(*posterrband)->GetErrorYhigh(bin+channel_start));
-                        post_channel_errband->SetPointEYlow(bin, scale*(*posterrband)->GetErrorYlow(bin+channel_start));
-                    }
-                    post_channel_errband->SetFillColor(kRed);
-                    post_channel_errband->SetFillStyle(3354);
-                    post_channel_errband->SetLineColor(kRed);
-                    post_channel_errband->SetLineWidth(1);
-                    leg->AddEntry(post_channel_errband, "post-fit #pm 1#sigma", "f");
-                }
-
-                TH1D data_hist;
-                if(data) {
-                    data_hist = data->toTH1D(config, global_channel_index, other_index);
-                    data_hist.SetLineColor(kBlack);
-                    data_hist.SetLineWidth(2);
-                    data_hist.SetMarkerStyle(kFullCircle);
-                    data_hist.SetMarkerColor(kBlack);
-                    data_hist.SetMarkerSize(1);
-                    leg->AddEntry(&data_hist, "Data", "pe");
-                    if(bool(opt&PlotOptions::BinWidthScaled))
-                        data_hist.Scale(1, "width");
-                    if(bool(opt&PlotOptions::AreaNormalized))
-                        data_hist.Scale(1.0/data_hist.Integral());
-                }
-
-                /*******************/
-                /* Draw everything */
-                /*******************/
-
-                if(bool(opt&PlotOptions::DataMCRatio) || bool(opt&PlotOptions::DataPostfitRatio))
-                    p1.cd();
-
-                if(cv) {
-                    if(bool(opt&PlotOptions::CVasStack)) {
-                        cvstack->SetMaximum(1.2*cvstack->GetMaximum());
-                        cvstack->Draw("hist");
-                    } else {
-                        cv_hist.SetMaximum(1.2*cv_hist.GetMaximum());
-                        leg->AddEntry(&cv_hist, "CV", "l");
-                        cv_hist.Draw("hist");
-                    }
-                }
-
-                if(errband) channel_errband->Draw("2 same");
-
-                if(best_fit) {
-                    if(cv) bf_hist.Draw("hist same");
-                    else bf_hist.Draw("hist");
-                }
-
-                if(posterrband) post_channel_errband->Draw("2 same");
-
-                if(data) {
-                    if(cv || best_fit) data_hist.Draw("PE1 same");
-                    else data_hist.Draw("E1P");
-                }
-
-                if(text) {
-                    text->Draw("same");
-                }
-                
-                leg->Draw("same");
-
-                TH1D *ratio, *one;
-                TGraphAsymmErrors *ratio_err;
-                if(bool(opt&PlotOptions::DataMCRatio) || bool(opt&PlotOptions::DataPostfitRatio)) {
-                    p2.cd();
-
-                    std::string y_title = bool(opt&PlotOptions::DataMCRatio) ? "data/MC" : "data/Best Fit";
-                    ratio = new TH1D(("rat"+std::to_string(global_channel_index)).c_str(), (";"+xtitle+";"+y_title).c_str(), channel_nbins, edges.data());
-                    one = new TH1D(("one"+std::to_string(global_channel_index)).c_str(), (";"+xtitle+";"+y_title).c_str(), channel_nbins, edges.data());
-                    ratio_err = new TGraphAsymmErrors(); 
-                    *ratio_err = bool(opt&PlotOptions::DataMCRatio)
-                        ? *channel_errband
-                        : *post_channel_errband;
-
-                    one->GetYaxis()->SetTitleSize(0.1);
-                    one->GetYaxis()->SetLabelSize(0.1);
-                    one->GetXaxis()->SetTitleSize(0.1);
-                    one->GetXaxis()->SetLabelSize(0.1);
-                    one->GetYaxis()->SetTitleOffset(0.5);
-
-                    for(size_t i = 0; i < channel_nbins; ++i) {
-                        float numerator = data_hist.GetBinContent(i+1);
-                        float denonminator = 
-                            bool(opt&PlotOptions::DataMCRatio)
-                            ? cv_hist.GetBinContent(i+1)
-                            : bf_hist.GetBinContent(i+1);
-                        float rat = numerator/denonminator;
-                        if(isnan(rat)) rat = 1;
-                        ratio->SetBinError(i+1, 1.0 / sqrt(numerator));
-                        ratio->SetBinContent(i+1, rat);
-                        one->SetBinContent(i+1, 1.0);
-                        ratio_err->SetPointEYhigh(i, ratio_err->GetErrorYhigh(i)/ratio_err->GetPointY(i));
-                        ratio_err->SetPointEYlow(i, ratio_err->GetErrorYlow(i)/ratio_err->GetPointY(i));
-                        ratio_err->SetPointY(i, 1.0);
-                    }
-
-
-                    one->SetMaximum(1.5);
-                    one->SetMinimum(0.5);
-                    one->SetLineColor(kBlack);
-                    one->SetLineStyle(kDashed);
-                    one->Draw("hist");
-
-                    ratio->SetLineColor(kBlack);
-                    ratio->SetLineWidth(2);
-                    ratio->SetMarkerStyle(kFullCircle);
-                    ratio->SetMarkerColor(kBlack);
-                    ratio->SetMarkerSize(1);
-
-                    //ratio_err->SetFillColor(kRed);
-                    //ratio_err->SetFillStyle(3345);
-                    ratio_err->Draw("2 same");
-
-                    ratio->Draw("PE1 same");
-
-                    c.cd();
-                    p1.Draw();
-                    p2.Draw();
-                }
-
-                c.Print(filename.c_str());
-
-                ++global_channel_index;
-            }
-        }
-    }
-
-    c.Print((filename+"]").c_str());
-}
 
