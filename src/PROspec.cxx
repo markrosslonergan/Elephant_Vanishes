@@ -1,5 +1,6 @@
 #include "PROspec.h"
 #include "PROtocall.h"
+#include <cstdint>
 #include <random>
 
 using namespace PROfit;
@@ -10,9 +11,8 @@ PROspec::PROspec(size_t num_bins):
     error(Eigen::VectorXf::Zero(num_bins)){
     }
 
-PROspec PROspec::PoissonVariation(const PROspec &s) {
-    static std::random_device rd;
-    std::mt19937 gen(rd());
+PROspec PROspec::PoissonVariation(const PROspec &s, uint32_t seed) {
+    std::mt19937 gen(seed);
 
     PROspec newSpec(s.nbins);
 

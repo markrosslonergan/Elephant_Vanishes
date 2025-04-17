@@ -1,5 +1,7 @@
 #include "PROconfig.h"
 #include "PROlog.h"
+#include <cctype>
+#include <cstdlib>
 #include <ctype.h>
 #include <numeric>
 using namespace PROfit;
@@ -766,6 +768,7 @@ int PROconfig::LoadFromXML(const std::string &filename){
                 const char *variation_type = pAllowList->Attribute("type");
                 const char *plot_name = pAllowList->Attribute("plotname");
                 const char *binning = pAllowList->Attribute("binning");
+                const char *knobs = pAllowList->Attribute("knobvals");
                 m_mcgen_variation_type.push_back(variation_type);
                 m_mcgen_variation_type_map[wt] = variation_type;
                 m_mcgen_variation_allowlist.push_back(wt);
@@ -796,6 +799,20 @@ int PROconfig::LoadFromXML(const std::string &filename){
                     log<LOG_WARNING>(L"%1% || Unrecognized binning '%2%' for systematic %3%. Defaulting to reco bins.") 
                         % __func__ % binning % wt.c_str();
                     m_mcgen_variation_binning_map[wt] = -1;
+                }
+                if(knobs) {
+                    std::vector<double> knobs_vec;
+                    const char *c = knobs, *begin = NULL;
+                    while(*c) {
+                        if(!begin) begin = c;
+                        if(isspace(*c)) {
+                            knobs_vec.push_back(strtod(begin, NULL));
+                            begin = NULL;
+                        }
+                        ++c;
+                    }
+                    knobs_vec.push_back(strtod(begin, NULL));
+                    m_mcgen_variation_knobval_override[wt] = knobs_vec;
                 }
                 log<LOG_DEBUG>(L"%1% || Allowlisting variations: %2%") % __func__ % wt.c_str() ;
                 pAllowList = pAllowList->NextSiblingElement("allowlist");

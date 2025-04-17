@@ -643,11 +643,12 @@ namespace PROfit {
                     sv.back().SetMode(sys_mode);
                 }
                 if(sys_mode == "spline") {
-                    if(map_systematic_knob_vals.find(sys_name) == map_systematic_knob_vals.end()) {
+                    bool override_knobs = inconfig.m_mcgen_variation_knobval_override.find(sys_name) != inconfig.m_mcgen_variation_knobval_override.end();
+                    if(!override_knobs && map_systematic_knob_vals.find(sys_name) == map_systematic_knob_vals.end()) {
                         log<LOG_WARNING>(L"%1% || Expected %2% to have knob vals associated with it, but couldn't find any. Will use -3 to +3 as default.") % __func__ % sys_name.c_str();
                         map_systematic_knob_vals[sys_name] = {-3.0f, -2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f};
                     }
-                    sv.back().knob_index = map_systematic_knob_vals[sys_name];
+                    sv.back().knob_index = override_knobs ? inconfig.m_mcgen_variation_knobval_override.at(sys_name) : map_systematic_knob_vals[sys_name];
                     sv.back().knobval = sv.back().knob_index;
                     std::sort(sv.back().knobval.begin(), sv.back().knobval.end());
                     sv.back().binning = binning;

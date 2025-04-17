@@ -63,6 +63,7 @@ int main(int argc, char* argv[])
     bool rateonly = false;
     bool force = false;
     bool noxrootd = false;
+    bool poisson_throw = false;
     size_t nthread = 1;
     std::map<std::string, float> scan_fit_options;
     std::map<std::string, float> global_fit_options;
@@ -109,6 +110,7 @@ int main(int argc, char* argv[])
     app.add_option("-i, --inject", osc_params, "Physics parameters to inject as true signal.")->expected(-1);// HOW TO
     app.add_option("-s, --seed", global_seed, "A global seed for PROseed rng. Default to -1 for hardware rng seed.")->default_val(-1);
     app.add_option("--inject-systs", injected_systs, "Systematic shifts to inject. Map of name and shift value in sigmas. Only spline systs are supported right now.");
+    app.add_flag("--poisson-throw", poisson_throw, "Do a Poisson stats throw of fake data.");
     app.add_option("--syst-list", syst_list, "Override list of systematics to use (note: all systs must be in the xml).");
     app.add_option("--exclude-systs", systs_excluded, "List of systematics to exclude.")->excludes("--syst-list"); 
     app.add_option("--fit-options", global_fit_options, "Parameters for single, detailed global best fit LBFGSB.");
@@ -233,17 +235,6 @@ int main(int argc, char* argv[])
     std::unique_ptr<PROmodel> model = get_model_from_string(config.m_model_tag, prop);
     std::unique_ptr<PROmodel> null_model = std::make_unique<NullModel>(prop);
 
-    //Some eystematics might be ignored for this
-    if(syst_list.size()) {
-        systs = systs.subset(syst_list);
-        for(PROsyst &syst: other_systs)
-            syst = syst.subset(syst_list);
-    } else if(systs_excluded.size()) {
-        systs = systs.excluding(systs_excluded);
-        for(PROsyst &syst: other_systs)
-            syst = syst.excluding(systs_excluded);
-    }
-
     //Pysics parameter input
         Eigen::VectorXf pparams = Eigen::VectorXf::Constant(model->nparams + systs.GetNSplines(), 0);
         if(osc_params.size()) {
@@ -277,6 +268,10 @@ int main(int argc, char* argv[])
             allparams(idx+model->nparams) = shift;
             systparams(idx) = shift;
         }
+
+    //Seed time
+    PROseed myseed(nthread, global_seed);
+    std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
 
     //Some logic for EITHER injecting fake/mock data of oscillated signal/syst shifts OR using real data
     PROdata data;
@@ -368,6 +363,7 @@ int main(int argc, char* argv[])
             }
             data_spec = FillWeightedSpectrumFromHist(config, prop, weighthists, *model, allparams, !eventbyevent);
         }
+        if(poisson_throw) data_spec = PROspec::PoissonVariation(data_spec, dseed(myseed.global_rng));
         Eigen::VectorXf data_vec = CollapseMatrix(config, data_spec.Spec());
         Eigen::VectorXf err_vec_sq = data_spec.Error().array().square();
         Eigen::VectorXf err_vec = CollapseMatrix(config, err_vec_sq).array().sqrt();
@@ -386,10 +382,19 @@ int main(int argc, char* argv[])
         }
     }
 
-    //Seed time
-    PROseed myseed(nthread, global_seed);
-    std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
-    
+    // Leave this after creating fake data so we can make fake data using systs that aren't
+    // included in the fit.
+    if(syst_list.size()) {
+        systs = systs.subset(syst_list);
+        for(PROsyst &syst: other_systs)
+            syst = syst.subset(syst_list);
+    } else if(systs_excluded.size()) {
+        systs = systs.excluding(systs_excluded);
+        for(PROsyst &syst: other_systs)
+            syst = syst.excluding(systs_excluded);
+    }
+
+
     PROsyst allcovsyst = systs.allsplines2cov(config, prop, dseed(PROseed::global_rng));
 
     log<LOG_INFO>(L"%1% || Starting from fit preset :  %2%.")% __func__ % fit_preset.c_str();
@@ -705,8 +710,8 @@ int main(int argc, char* argv[])
                 for(size_t i = 0; i < config.m_num_bins_total_collapsed; i++)
                     throwC(i) = d(PROseed::global_rng);
                 PROspec shifted = FillRecoSpectra(config, prop, metric->GetSysts(), metric->GetModel(), throwp, eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-                PROspec newSpec = statonly_brazil ? PROspec::PoissonVariation(collapsed_cv) :
-                    PROspec::PoissonVariation(PROspec(CollapseMatrix(config, shifted.Spec()) + L * throwC, CollapseMatrix(config, shifted.Error())));
+                PROspec newSpec = statonly_brazil ? PROspec::PoissonVariation(collapsed_cv, dseed(myseed.global_rng)) :
+                    PROspec::PoissonVariation(PROspec(CollapseMatrix(config, shifted.Spec()) + L * throwC, CollapseMatrix(config, shifted.Error())), dseed(myseed.global_rng));
                 PROdata data(newSpec.Spec(), newSpec.Error());
                 PROmetric *metric;
                 if(chi2 == "PROchi") {
