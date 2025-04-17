@@ -30,6 +30,7 @@ void fc_worker(fc_args args) {
         lb(j-nphys) = args.systs.spline_lo[j-nphys];
         ub(j-nphys) = args.systs.spline_hi[j-nphys];
     }
+    std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
     for(size_t u = 0; u < args.todo; ++u) {
         log<LOG_INFO>(L"%1% | Thread #%2% Throw #%3%") % __func__ % args.thread % u;
         std::normal_distribution<float> d;
@@ -39,7 +40,7 @@ void fc_worker(fc_args args) {
         for(size_t i = 0; i < args.config.m_num_bins_total_collapsed; i++)
             throwC(i) = d(rng);
         PROspec shifted = FillRecoSpectra(args.config, args.prop, args.systs, *model, throws, strat);
-        PROspec newSpec = PROspec::PoissonVariation(PROspec(CollapseMatrix(args.config, shifted.Spec()) + args.L * throwC, CollapseMatrix(args.config, shifted.Error())));
+        PROspec newSpec = PROspec::PoissonVariation(PROspec(CollapseMatrix(args.config, shifted.Spec()) + args.L * throwC, CollapseMatrix(args.config, shifted.Error())), dseed(rng));
         PROdata data(newSpec.Spec(), newSpec.Error());
         //Metric Time
         PROmetric *metric, *null_metric;
@@ -58,7 +59,6 @@ void fc_worker(fc_args args) {
         }
 
         // No oscillations
-        std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
         PROfitter fitter(ub, lb, args.fitconfig, dseed(rng));
         float chi2_syst = fitter.Fit(*null_metric);
 

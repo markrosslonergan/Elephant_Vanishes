@@ -280,6 +280,10 @@ int main(int argc, char* argv[])
             systparams(idx) = shift;
         }
 
+    //Seed time
+    PROseed myseed(nthread, global_seed);
+    std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
+
     //Some logic for EITHER injecting fake/mock data of oscillated signal/syst shifts OR using real data
     PROdata data;
     std::vector<PROdata> other_data;
@@ -370,7 +374,7 @@ int main(int argc, char* argv[])
             }
             data_spec = FillWeightedSpectrumFromHist(config, prop, weighthists, *model, allparams, !eventbyevent);
         }
-        if(poisson_throw) data_spec = PROspec::PoissonVariation(data_spec);
+        if(poisson_throw) data_spec = PROspec::PoissonVariation(data_spec, dseed(myseed.global_rng));
         Eigen::VectorXf data_vec = CollapseMatrix(config, data_spec.Spec());
         Eigen::VectorXf err_vec_sq = data_spec.Error().array().square();
         Eigen::VectorXf err_vec = CollapseMatrix(config, err_vec_sq).array().sqrt();
@@ -389,10 +393,6 @@ int main(int argc, char* argv[])
         }
     }
 
-    //Seed time
-    PROseed myseed(nthread, global_seed);
-    std::uniform_int_distribution<uint32_t> dseed(0, std::numeric_limits<uint32_t>::max());
-    
     PROsyst allcovsyst = systs.allsplines2cov(config, prop, dseed(PROseed::global_rng));
 
     log<LOG_INFO>(L"%1% || Starting from fit preset :  %2%.")% __func__ % fit_preset.c_str();
@@ -708,8 +708,8 @@ int main(int argc, char* argv[])
                 for(size_t i = 0; i < config.m_num_bins_total_collapsed; i++)
                     throwC(i) = d(PROseed::global_rng);
                 PROspec shifted = FillRecoSpectra(config, prop, metric->GetSysts(), metric->GetModel(), throwp, eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-                PROspec newSpec = statonly_brazil ? PROspec::PoissonVariation(collapsed_cv) :
-                    PROspec::PoissonVariation(PROspec(CollapseMatrix(config, shifted.Spec()) + L * throwC, CollapseMatrix(config, shifted.Error())));
+                PROspec newSpec = statonly_brazil ? PROspec::PoissonVariation(collapsed_cv, dseed(myseed.global_rng)) :
+                    PROspec::PoissonVariation(PROspec(CollapseMatrix(config, shifted.Spec()) + L * throwC, CollapseMatrix(config, shifted.Error())), dseed(myseed.global_rng));
                 PROdata data(newSpec.Spec(), newSpec.Error());
                 PROmetric *metric;
                 if(chi2 == "PROchi") {
