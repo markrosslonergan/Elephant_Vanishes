@@ -1119,9 +1119,8 @@ int main(int argc, char* argv[])
 
     if(*profc_command) {
         size_t FCthreads = nthread > nuniv ? nuniv : nthread;
-        Eigen::MatrixXf diag = FillCVSpectrum(config, prop, !eventbyevent).Spec().array().matrix().asDiagonal();
-        Eigen::MatrixXf full_cov = diag * systs.fractional_covariance * diag;
-        Eigen::LLT<Eigen::MatrixXf> llt(CollapseMatrix(config, full_cov));
+        Eigen::MatrixXf cv_vec = FillCVSpectrum(config, prop, !eventbyevent).Spec();
+        Eigen::MatrixXf L = systs.DecomposeFractionalCovariance(config, cv_vec);
 
         std::vector<std::vector<float>> dchi2s;
         dchi2s.reserve(FCthreads);
@@ -1133,7 +1132,7 @@ int main(int argc, char* argv[])
         for(size_t i = 0; i < nthread; i++) {
             dchi2s.emplace_back();
             outs.emplace_back();
-            fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, systs, chi2, pparams, llt.matrixL(), scanFitConfig,(*myseed.getThreadSeeds())[i], (int)i, !eventbyevent};
+            fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, systs, chi2, pparams, L, scanFitConfig,(*myseed.getThreadSeeds())[i], (int)i, !eventbyevent};
 
             threads.emplace_back([args]() {
              PROfit::fc_worker(args);
