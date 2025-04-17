@@ -811,6 +811,7 @@ int PROconfig::LoadFromXML(const std::string &filename){
                         }
                         ++c;
                     }
+                    knobs_vec.push_back(strtod(begin, NULL));
                     m_mcgen_variation_knobval_override[wt] = knobs_vec;
                 }
                 log<LOG_DEBUG>(L"%1% || Allowlisting variations: %2%") % __func__ % wt.c_str() ;
