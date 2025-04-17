@@ -354,6 +354,7 @@ namespace PROfit{
             std::map<std::string, std::string> m_mcgen_variation_type_map;
             std::map<std::string, std::string> m_mcgen_variation_plotname_map;
             std::map<std::string, int> m_mcgen_variation_binning_map;
+            std::map<std::string, std::vector<double>> m_mcgen_variation_knobval_override;
             std::map<std::string, std::vector<std::string>> m_mcgen_shapeonly_listmap; //a map of shape-only systematic and corresponding subchannels
             std::vector<std::tuple<std::string, std::string, float>> m_mcgen_correlations;
       
