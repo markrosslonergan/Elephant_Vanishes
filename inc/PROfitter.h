@@ -22,7 +22,7 @@ namespace PROfit {
                 //Global Big presets
                 if(fit_preset == "good"){
                     param.epsilon = 1e-6;
-                    param.max_iterations = 0;
+                    param.max_iterations = 10'000;
                     param.max_linesearch = 400;
                     param.delta = 1e-6;
                     n_multistart = 3000;
@@ -44,7 +44,7 @@ namespace PROfit {
                     n_max_local_retries = 1;
                 }else if(fit_preset == "overkill"){
                     param.epsilon = 1e-6;
-                    param.max_iterations = 0;
+                    param.max_iterations = 100'000;
                     param.max_linesearch = 1000;
                     param.delta = 1e-6;
                     n_multistart = 3000;
@@ -61,7 +61,7 @@ namespace PROfit {
                 // the lesser Scan version
                 if(fit_preset == "good"){
                     param.epsilon = 1e-6;
-                    param.max_iterations = 0;
+                    param.max_iterations = 10'000;
                     param.max_linesearch = 250;
                     param.delta = 1e-6;
                     n_multistart = 1500;
@@ -83,7 +83,7 @@ namespace PROfit {
                     n_max_local_retries = 1;
                 }else if(fit_preset == "overkill"){
                     param.epsilon = 1e-6;
-                    param.max_iterations = 0;
+                    param.max_iterations = 100'000;
                     param.max_linesearch = 500;
                     param.delta = 1e-6;
                     n_multistart = 2500;
