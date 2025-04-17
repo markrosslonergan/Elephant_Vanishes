@@ -63,6 +63,7 @@ int main(int argc, char* argv[])
     bool rateonly = false;
     bool force = false;
     bool noxrootd = false;
+    bool poisson_throw = false;
     size_t nthread = 1;
     std::map<std::string, float> scan_fit_options;
     std::map<std::string, float> global_fit_options;
@@ -109,6 +110,7 @@ int main(int argc, char* argv[])
     app.add_option("-i, --inject", osc_params, "Physics parameters to inject as true signal.")->expected(-1);// HOW TO
     app.add_option("-s, --seed", global_seed, "A global seed for PROseed rng. Default to -1 for hardware rng seed.")->default_val(-1);
     app.add_option("--inject-systs", injected_systs, "Systematic shifts to inject. Map of name and shift value in sigmas. Only spline systs are supported right now.");
+    app.add_flag("--poisson-throw", poisson_throw, "Do a Poisson stats throw of fake data.");
     app.add_option("--syst-list", syst_list, "Override list of systematics to use (note: all systs must be in the xml).");
     app.add_option("--exclude-systs", systs_excluded, "List of systematics to exclude.")->excludes("--syst-list"); 
     app.add_option("--fit-options", global_fit_options, "Parameters for single, detailed global best fit LBFGSB.");
@@ -368,6 +370,7 @@ int main(int argc, char* argv[])
             }
             data_spec = FillWeightedSpectrumFromHist(config, prop, weighthists, *model, allparams, !eventbyevent);
         }
+        if(poisson_throw) data_spec = PROspec::PoissonVariation(data_spec);
         Eigen::VectorXf data_vec = CollapseMatrix(config, data_spec.Spec());
         Eigen::VectorXf err_vec_sq = data_spec.Error().array().square();
         Eigen::VectorXf err_vec = CollapseMatrix(config, err_vec_sq).array().sqrt();
