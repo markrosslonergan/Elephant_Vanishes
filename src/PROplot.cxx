@@ -1594,6 +1594,52 @@ namespace PROfit{
                         posterrband_1d = make_1d_err(*posterrband, channel_nbins_x, channel_nbins_y, tot_offset, config.m_channel_variable_dims[channel][other_index]);
                     }
 
+                    const size_t channel_start = config.GetCollapsedGlobalVariableBinStart(global_channel_index, other_index);
+		    // In `groups`, each outer vector is one displayed bin; its inner vector lists the flattened
+                    // source bins to sum. For a 3x2 Y projection, groups looks like {{0, 2, 4}, {1, 3, 5}}, i.e.,
+                    // the first bin contains bins 0, 2, and 4 from the flat bins, and the second bin contains bins
+                    // 1, 3, and 5 from the flat bins.
+                    auto make_projection = [&](const std::vector<std::vector<size_t>> &groups) {
+                        size_t nrows = 0;
+                        for(const auto &group : groups) {
+                            if(std::any_of(group.begin(), group.end(), [&](size_t bin) {
+                                return config.IsBinActive(other_index, channel_start + bin);
+                            })) ++nrows;
+                        }
+
+                        // Maps from original bins (nbins_p_2dchan) to active bins in projection (nrows)
+                        Eigen::MatrixXf projection = Eigen::MatrixXf::Zero(nrows, nbins_p_2dchan);
+                        size_t row = 0;
+                        for(const auto &group : groups) {
+                            bool active = false;
+                            for(size_t bin : group) {
+                                if(config.IsBinActive(other_index, channel_start + bin)) {
+                                    projection(row, bin) = 1.0f;
+                                    active = true;
+                                }
+                            }
+                            if (active) ++row; // Only advance matrix row if at least one bin in group is active
+                        }
+                        return projection;
+                    };
+                    auto chi_label = [&](const Eigen::MatrixXf &projection) {
+                        if(!chi_metric || !chi_spec || projection.rows() == 0) return std::string();
+                        const float chi2 = chi_metric->getSingleChannelChi(global_channel_index, *chi_spec, other_index, projection);
+                        log<LOG_DEBUG>(L"%1% || projection %2%") % __func__ % projection;
+                        log<LOG_DEBUG>(L"%1% || projection.rows() %2%") % __func__ % projection.rows();
+                        return std::string("#chi^{2}/nbins = ") + chi2LabelValue(chi2) + "/" + std::to_string(projection.rows());
+                    };
+                    auto draw_chi_label = [&](const std::string &label) {
+                        if(label.empty()) return;
+                        TPaveText text(0.62, 0.91, 0.89, 0.96, "NDC");
+                        text.AddText(label.c_str());
+                        text.SetFillColor(0);
+                        text.SetBorderSize(0);
+                        text.SetTextAlign(12);
+                        text.SetTextFont(42);
+                        text.SetTextSize(0.03);
+                        text.DrawClone();
+                    };
                     std::string projected_x_chi_label; // We want to pass this to the 1d plotter outside the 2d plotting
                     if(config.m_channel_variable_dims[channel][other_index] == 2){
                         gStyle->SetPalette(kViridis);
@@ -1610,52 +1656,6 @@ namespace PROfit{
                         std::vector<float> edges_y = config.m_channel_variable_bins[channel][other_index].Edges(1);
 
                         // Helpers to plot chi^2 for each heatmap/slice/projection
-                        const size_t channel_start = config.GetCollapsedGlobalVariableBinStart(global_channel_index, other_index);
-
-                        // In `groups`, each outer vector is one displayed bin; its inner vector lists the flattened
-                        // source bins to sum. For a 3x2 Y projection, groups looks like {{0, 2, 4}, {1, 3, 5}}, i.e.,
-                        // the first bin contains bins 0, 2, and 4 from the flat bins, and the second bin contains bins
-                        // 1, 3, and 5 from the flat bins.
-                        auto make_projection = [&](const std::vector<std::vector<size_t>> &groups) {
-                            size_t nrows = 0;
-                            for(const auto &group : groups) {
-                                if(std::any_of(group.begin(), group.end(), [&](size_t bin) {
-                                    return config.IsBinActive(other_index, channel_start + bin);
-                                })) ++nrows;
-                            }
-
-                            // Maps from original bins (nbins_p_2dchan) to active bins in projection (nrows)
-                            Eigen::MatrixXf projection = Eigen::MatrixXf::Zero(nrows, nbins_p_2dchan);
-                            size_t row = 0;
-                            for(const auto &group : groups) {
-                                bool active = false;
-                                for(size_t bin : group) {
-                                    if(config.IsBinActive(other_index, channel_start + bin)) {
-                                        projection(row, bin) = 1.0f;
-                                        active = true;
-                                    }
-                                }
-                                if (active) ++row; // Only advance matrix row if at least one bin in group is active
-                            }
-                            return projection;
-                        };
-                        auto chi_label = [&](const Eigen::MatrixXf &projection) {
-                            if(!chi_metric || !chi_spec || projection.rows() == 0) return std::string();
-                            const float chi2 = chi_metric->getSingleChannelChi(global_channel_index, *chi_spec, other_index, projection);
-                            return std::string("#chi^{2}/nbins = ") + chi2LabelValue(chi2) + "/" + std::to_string(projection.rows());
-                        };
-                        auto draw_chi_label = [&](const std::string &label) {
-                            if(label.empty()) return;
-                            TPaveText text(0.62, 0.91, 0.89, 0.96, "NDC");
-                            text.AddText(label.c_str());
-                            text.SetFillColor(0);
-                            text.SetBorderSize(0);
-                            text.SetTextAlign(12);
-                            text.SetTextFont(42);
-                            text.SetTextSize(0.03);
-                            text.DrawClone();
-                        };
-
                         std::vector<std::vector<size_t>> full_groups(nbins_p_2dchan);
                         for(size_t bin = 0; bin < (size_t)nbins_p_2dchan; ++bin) full_groups[bin] = {bin};
                         const std::string full_chi_label = chi_label(make_projection(full_groups));
@@ -1987,6 +1987,11 @@ namespace PROfit{
                         const std::string y_chi_label = chi_label(make_projection(y_projection_groups));
                         plot_hist1ds(&c, &cv_hist_y, channel_errband_y, cvstack_y, &subplots_y, bf_hist_y, post_channel_errband_y, data_hist_y, &dat_str, opt, hist_title_y, ratio_titles_y, filename, bounds, y_chi_label, postfit_color(posterrband));
                     }
+		    else if(config.m_channel_variable_dims[channel][other_index] == 1){
+                        // Helpers to plot chi^2 for each heatmap/slice/projection
+			Eigen::MatrixXf projection = Eigen::MatrixXf::Ones(channel_nbins_x, 1);
+                        projected_x_chi_label = chi_label(projection);
+                    }
 
                     std::vector<float> edges = config.m_channel_variable_bins[channel][other_index].Edges();
 
@@ -2131,11 +2136,15 @@ namespace PROfit{
                     }
 
                     std::string chi_label_text;
+                    log<LOG_DEBUG>(L"%1% || projected_x_chi_label : %2%") % __func__ % projected_x_chi_label.c_str();
                     if(config.m_channel_variable_dims[channel][other_index] == 2 && !projected_x_chi_label.empty()) {
+                        chi_label_text = projected_x_chi_label;
+                    } else if(!projected_x_chi_label.empty()) {
                         chi_label_text = projected_x_chi_label;
                     } else if(texts.size()!=0) {
                         TPaveText &box = texts.size() == 1 ? texts.front() : texts.at(global_channel_index);
                         if(TText *line = (TText*)box.GetListOfLines()->First()) chi_label_text = line->GetTitle();
+                        log<LOG_DEBUG>(L"%1% || alternative chi2 text used : %2%") % __func__ % chi_label_text.c_str();
                     }
                     // should probably be switching this to a more clear boolean...
                     plot_hist1ds(&c, &cv_hist, channel_errband, cvstack, &subplots, bf_hist, post_channel_errband, data_hist, &dat_str, opt, hist_titles, ratio_titles, filename, bounds, chi_label_text, postfit_color(posterrband));
