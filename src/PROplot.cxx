@@ -1625,8 +1625,6 @@ namespace PROfit{
                     auto chi_label = [&](const Eigen::MatrixXf &projection) {
                         if(!chi_metric || !chi_spec || projection.rows() == 0) return std::string();
                         const float chi2 = chi_metric->getSingleChannelChi(global_channel_index, *chi_spec, other_index, projection);
-                        log<LOG_DEBUG>(L"%1% || projection %2%") % __func__ % projection;
-                        log<LOG_DEBUG>(L"%1% || projection.rows() %2%") % __func__ % projection.rows();
                         return std::string("#chi^{2}/nbins = ") + chi2LabelValue(chi2) + "/" + std::to_string(projection.rows());
                     };
                     auto draw_chi_label = [&](const std::string &label) {
@@ -1984,12 +1982,13 @@ namespace PROfit{
                                 y_projection_groups[ybin].push_back(xbin*channel_nbins_y + ybin);
                             }
                         }
+
                         const std::string y_chi_label = chi_label(make_projection(y_projection_groups));
                         plot_hist1ds(&c, &cv_hist_y, channel_errband_y, cvstack_y, &subplots_y, bf_hist_y, post_channel_errband_y, data_hist_y, &dat_str, opt, hist_title_y, ratio_titles_y, filename, bounds, y_chi_label, postfit_color(posterrband));
                     }
 		    else if(config.m_channel_variable_dims[channel][other_index] == 1){
                         // Helpers to plot chi^2 for each heatmap/slice/projection
-			Eigen::MatrixXf projection = Eigen::MatrixXf::Ones(channel_nbins_x, 1);
+			Eigen::MatrixXf projection = Eigen::MatrixXf::Identity(channel_nbins_x, channel_nbins_x);
                         projected_x_chi_label = chi_label(projection);
                     }
 
