@@ -66,7 +66,7 @@ namespace PROfit {
                 }
             }
             const double gap = has_palette ? 0.024 : 0.004;
-            t.SetTextSize(0.032f);
+            t.SetTextSize(0.022f);
             t.SetTextAlign(31); // right-bottom anchor
             // Keep the stamp on-canvas: the glyphs render against the pad's
             // SMALLER pixel dimension while y is a height fraction, so on tall
