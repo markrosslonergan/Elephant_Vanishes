@@ -653,6 +653,10 @@ namespace PROfit {
                     log<LOG_INFO>(L"%1% || Systematic variation %2% is a match for a covariance_to_spline systematic. Processing as such. ") % __func__ % sys_name.c_str();
                 }
                 if(sys_mode == "flat"){
+                    // binning defaults to -1; without setting it, process_cafana_event's
+                    // var_bin_indices[binning] at the "spline_bin" line reads out of bounds
+                    // and aborts. external_covariance below sets it for the same reason.
+                    sv.back().binning = binningindex;
                     log<LOG_INFO>(L"%1% || Systematic variation %2% is a match for a flat covariance systematic. Processing a such. ") % __func__ % sys_name.c_str();
                 }
                 if(sys_mode == "external_covariance"){
