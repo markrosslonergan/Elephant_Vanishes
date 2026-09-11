@@ -40,6 +40,7 @@ void run_afc(const PROconfig &config, const PROpeller &prop, PROmetric &metric, 
     acfg.output_tag = options.final_output_tag;
     acfg.chi2 = options.chi2;
     acfg.binned = !options.eventbyevent;
+    acfg.shape_only = options.shapeonly;
     acfg.cl_targets = options.afc_cl_targets;
     acfg.wilson_eps = options.afc_wilson_eps;
     acfg.n_pe_min = options.afc_n_pe_min;

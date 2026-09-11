@@ -119,6 +119,7 @@ AsimovObs compute_asimov_obs(
     const PROdata   &asimov_data,
     const std::string &chi2_kind,
     bool binned,
+    bool shape_only,
     size_t xaxis_idx, size_t yaxis_idx,
     const std::vector<float> &cell_x_model,
     const std::vector<float> &cell_y_model,

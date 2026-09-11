@@ -1,5 +1,6 @@
 #include "PROtocall.h"
 #include "PROlog.h"
+#include <atomic>
 
 namespace PROfit{
 
@@ -66,6 +67,46 @@ namespace PROfit{
         Eigen::SparseMatrix<float> S = spec.asDiagonal() * T;
         Eigen::MatrixXf FS = frac_cov * S;               // dense (N x m), no N x N temporary
         return Eigen::MatrixXf(S.transpose() * FS);      // dense (m x m)
+    }
+
+    Eigen::VectorXf ChannelNormFactors(const PROconfig &inconfig, const Eigen::VectorXf &collapsed_pred, const Eigen::VectorXf &data, int other_index){
+        if(collapsed_pred.size() != data.size()){
+            log<LOG_ERROR>(L"%1% || Size mismatch: collapsed prediction %2% vs data %3%.") % __func__ % collapsed_pred.size() % data.size();
+            log<LOG_ERROR>(L"Terminating.");
+            exit(EXIT_FAILURE);
+        }
+        Eigen::VectorXf r = Eigen::VectorXf::Ones(collapsed_pred.size());
+        size_t global_channel_index = 0;
+        for(size_t im = 0; im < inconfig.m_num_modes; ++im)
+            for(size_t id = 0; id < inconfig.m_num_detectors; ++id)
+                for(size_t ic = 0; ic < inconfig.m_num_channels; ++ic){
+                    const size_t nbin  = inconfig.GetChannelVariableBins(global_channel_index, other_index).NBins();
+                    const size_t start = inconfig.GetCollapsedGlobalVariableBinStart(global_channel_index, other_index);
+                    const float sp = collapsed_pred.segment(start, nbin).sum();
+                    const float sd = data.segment(start, nbin).sum();
+                    if(sp > 0.0f && std::isfinite(sp) && std::isfinite(sd)) {
+                        r.segment(start, nbin).setConstant(sd / sp);
+                    } else {
+                        static std::atomic<bool> warned{false};
+                        if(!warned.exchange(true))
+                            log<LOG_WARNING>(L"%1% || Shape-only: channel %2% has prediction integral %3%; its normalisation factor is left at 1 (warned once).") % __func__ % global_channel_index % sp;
+                    }
+                    ++global_channel_index;
+                }
+        return r;
+    }
+
+    Eigen::VectorXf ShapeRescaleToData(const PROconfig &inconfig, const Eigen::VectorXf &full_spec, const Eigen::VectorXf &data, int other_index, Eigen::VectorXf *r_out){
+        const Eigen::SparseMatrix<float>& T = inconfig.GetCollapsingMatrixSparse(other_index);
+        if(full_spec.size() != T.rows()){
+            log<LOG_ERROR>(L"%1% || Spectrum size %2% does not match the uncollapsed binning (%3%) of variable %4%.") % __func__ % full_spec.size() % T.rows() % other_index;
+            log<LOG_ERROR>(L"Terminating.");
+            exit(EXIT_FAILURE);
+        }
+        const Eigen::VectorXf collapsed = T.transpose() * full_spec;
+        const Eigen::VectorXf r = ChannelNormFactors(inconfig, collapsed, data, other_index);
+        if(r_out) *r_out = r;
+        return full_spec.cwiseProduct(Eigen::VectorXf(T * r));
     }
 
     Eigen::MatrixXf CollapseMatrix(const PROconfig &inconfig, const Eigen::MatrixXf& full_matrix, int other_index){

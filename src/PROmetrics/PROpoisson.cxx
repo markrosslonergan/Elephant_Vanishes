@@ -114,10 +114,12 @@ float PROpoisson::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &grad
     // fill cache valid.
     PROspec result = FillSpectra(config, peller, *syst, model, param, fs_cache, strat != EventByEvent, config.i_prime);
 
-    const Eigen::VectorXf vdata = shape_only
-        ? data.Normalize(config,result)
-        : data.Spec();
-    const Eigen::VectorXf vmc = CollapseMatrix(config, result.Spec());
+    // Shape-only: the PREDICTION is rescaled onto the data per channel; n stays the
+    // observed integer counts so Baker-Cousins remains a likelihood ratio.
+    const Eigen::VectorXf &vdata = data.Spec();
+    const Eigen::VectorXf vmc = CollapseMatrix(config, shape_only
+        ? ShapeRescaleToData(config, result.Spec(), data.Spec(), config.i_prime)
+        : result.Spec());
     float poisson = BakerCousinsChi2(vmc, vdata, &active_bins);
     float pull = Pull(subvector2);
     float value = poisson + pull;
@@ -132,9 +134,8 @@ float PROpoisson::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &grad
         //
         // Linearised modes here compose this analytic ∂chi²/∂s with an FD on s:
         //     d chi²/dθ_i ≈ Σ_b 2(1 - n_b/s_b^base) · (ds_b/dθ_i)_FD + dP/dθ_i
-        // For shape_only mode we hold n_b at its base value (same convention as
-        // the existing FD code held vdata fixed in the FD branches via the
-        // outer-scope `vdata` — see lines 117-119 of the previous version).
+        // In shape_only mode s_b is the per-channel rescaled prediction (recomputed
+        // at every FD point below); n_b is the observed data in every mode.
         //
         // Note: previous default for PROpoisson was a sign-heuristic 1-sided FD
         // that picked direction based on the LBFGS step. The new default
@@ -189,15 +190,17 @@ float PROpoisson::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &grad
             }
         }
 
-        // Helper: collapsed MC spec at arbitrary param. Holds vdata at base
-        // (matches the existing FD semantics in shape_only mode).
+        // Helper: collapsed MC spec at arbitrary param (per-channel rescaled onto the
+        // data in shape_only mode, exactly as the value above).
         auto compute_vmc_at = [&](const Eigen::VectorXf &param_at,
                                   Eigen::VectorXf &vmc_out) -> bool {
             Eigen::VectorXf phys = param_at.segment(0, nparams - nsyst);
             if(model.model_constraint && !model.model_constraint(phys)) return false;
             PROspec rl = FillSpectra(config, peller, *syst, model, param_at, fs_cache,
                                      strat != EventByEvent, config.i_prime);
-            vmc_out = CollapseMatrix(config, rl.Spec());
+            vmc_out = CollapseMatrix(config, shape_only
+                ? ShapeRescaleToData(config, rl.Spec(), vdata, config.i_prime)
+                : rl.Spec());
             return true;
         };
 
@@ -208,11 +211,10 @@ float PROpoisson::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &grad
             if(model.model_constraint && !model.model_constraint(phys)) return false;
             PROspec rl = FillSpectra(config, peller, *syst, model, param_at, fs_cache,
                                      strat != EventByEvent, config.i_prime);
-            // vdata may depend on result in shape_only mode; preserve that
-            // (shape_only re-normalises to perturbed result like the original).
-            const Eigen::VectorXf vdata_l = shape_only ? data.Normalize(config, rl) : data.Spec();
-            const Eigen::VectorXf vmc_l   = CollapseMatrix(config, rl.Spec());
-            float pois = BakerCousinsChi2(vmc_l, vdata_l, &active_bins);
+            const Eigen::VectorXf vmc_l = CollapseMatrix(config, shape_only
+                ? ShapeRescaleToData(config, rl.Spec(), vdata, config.i_prime)
+                : rl.Spec());
+            float pois = BakerCousinsChi2(vmc_l, vdata, &active_bins);
             Eigen::VectorXf nuis = param_at.segment(nparams - nsyst, nsyst);
             chi2_out = pois + Pull(nuis);
             return true;
@@ -328,10 +330,10 @@ float PROpoisson::getSingleChannelChi(size_t global_channel_index, const PROspec
 
 
     // const Eigen::VectorXf &vdata = data.Spec().segment(startBin, nbin);
-    Eigen::VectorXf vdata = (shape_only
-        ? data.Normalize(config,cv)
-        : data.Spec()).segment(startBin, nbin);
-    Eigen::VectorXf vmc = CollapseMatrix(config, cv.Spec()).segment(startBin, nbin);
+    Eigen::VectorXf vdata = data.Spec().segment(startBin, nbin);
+    Eigen::VectorXf vmc = CollapseMatrix(config, shape_only
+        ? ShapeRescaleToData(config, cv.Spec(), data.Spec(), config.i_prime)
+        : cv.Spec()).segment(startBin, nbin);
     // Mask applies only to the fitting variable (mask snapshot is for i_prime);
     // startBin offsets the channel-local segment into the global mask.
     const bool masked = (var_index == (size_t)config.i_prime) && hasActiveBinMask();

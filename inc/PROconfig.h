@@ -374,6 +374,8 @@ namespace PROfit{
               std::vector<float> Edges(unsigned dim = 0) const {return bin_edges[dim];}
               // return widths along a dimension
               std::vector<float> Widths(unsigned dim = 0) const;
+              // product of widths over all dimensions, one entry per flat bin (ProjectIndex order)
+              std::vector<float> BinWidths() const;
             };
 
             std::string m_xmlname;             ///< Path to the XML configuration file.
@@ -457,7 +459,7 @@ namespace PROfit{
             // Sparse companions to variable_collapsing_matrices (one nonzero per row).
             // Used by CollapseMatrix in the chi^2 inner loop; built once in construct_variable_collapsing_matrices.
             std::vector<Eigen::SparseMatrix<float>> variable_collapsing_matrices_sparse;
-            std::vector<Eigen::VectorXf> collapsed_bin_widths;
+            std::vector<Eigen::VectorXf> collapsed_bin_widths; ///< Per variable: one width (N-dim bin volume) per COLLAPSED bin, in collapsed bin order.
 
             //This section entirely for montecarlo generation of a covariance matrix or PROspec 
             bool m_write_out_variation;

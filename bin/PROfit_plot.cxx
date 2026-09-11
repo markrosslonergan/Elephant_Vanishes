@@ -471,8 +471,13 @@ void run_plot(const PROconfig &config, const PROpeller &prop, const PROmetric &m
                     }
                     if(options.area_normalized) {
                         cv_hist->GetYaxis()->SetTitle("Area Normalized");
-                        cv_hist->Scale(1.0 / cv_hist->Integral());
-                        osc_hist->Scale(1.0 / osc_hist->Integral());
+                        // The sub-hists are already width-scaled when --scale-by-width:
+                        // normalise by the RAW integral (sum of counts), not the sum of
+                        // densities. Guard empty histograms.
+                        const char *iopt = options.binwidth_scale ? "width" : "";
+                        const double cv_int = cv_hist->Integral(iopt), osc_int = osc_hist->Integral(iopt);
+                        if(cv_int > 0) cv_hist->Scale(1.0 / cv_int);
+                        if(osc_int > 0) osc_hist->Scale(1.0 / osc_int);
                     }
                     cv_hist->SetTitle((config.m_mode_names[im]  +" "+ config.m_detector_names[id]+" "+ config.m_channel_names[ic]).c_str());
                     cv_hist->GetXaxis()->SetTitle("");
@@ -644,7 +649,7 @@ void run_plot(const PROconfig &config, const PROpeller &prop, const PROmetric &m
             // Everything here is in unscaled counts; width/area scaling of the
             // data happens once inside plot_channels.
             PROsubtractedErrorBand sub = getErrorBandBkgSubtracted(config, prop, variable_systs[io],
-                    model, variable_cvs[io], CVParams, bkg_subchannels, options.binwidth_scale, io, (size_t)options.band_throws);
+                    model, variable_cvs[io], CVParams, bkg_subchannels, io, (size_t)options.band_throws);
             other_err_bands.push_back(sub.band);
             cv_plot.Spec() -= build_subchannel_mask_spec(config, cv_plot, bkg_subchannels, io);
             Eigen::VectorXf new_err = (data_plot.Error().array().square()
@@ -652,7 +657,7 @@ void run_plot(const PROconfig &config, const PROpeller &prop, const PROmetric &m
                                        + sub.bkg_mcstat_var_collapsed.array()).sqrt();
             data_plot = PROdata(Eigen::VectorXf(data_plot.Spec() - sub.bkg_cv_collapsed), new_err);
         } else {
-            other_err_bands.push_back(getErrorBand(config, prop, variable_systs[io], model, variable_cvs[io], CVParams, options.binwidth_scale, io, (size_t)options.band_throws));
+            other_err_bands.push_back(getErrorBand(config, prop, variable_systs[io], model, variable_cvs[io], CVParams, io, (size_t)options.band_throws));
         }
         auto objs = plot_channels(options.final_output_tag+"_PROplot_Variable_"+std::to_string(io)+"_ErrorBand.pdf", config, cv_plot, {}, data_plot,
                 other_err_bands.back(), {}, other_channel_chitexts[io], options.pbounds, opt | PlotOptions::DataMCRatio, io,

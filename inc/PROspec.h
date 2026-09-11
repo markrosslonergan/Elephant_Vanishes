@@ -55,9 +55,9 @@ namespace PROfit{
     struct PROerrorbar {
             Eigen::VectorXf error_down;   ///< Down (low) uncertainty per bin, measured from error_point + center_shift.
             Eigen::VectorXf error_up;     ///< Up (high) uncertainty per bin, measured from error_point + center_shift.
-            Eigen::VectorXf error_point;  ///< Central value per bin (may be scaled).
+            Eigen::VectorXf error_point;  ///< Central value per bin (raw collapsed counts, like every other field).
             Eigen::VectorXf center_shift; ///< Offset of the band center from error_point (nonzero only for data-constrained bands, where the posterior prediction is pulled away from the best-fit spectrum).
-            Eigen::MatrixXf covariance;   ///< Bin-to-bin covariance matrix.
+            Eigen::MatrixXf covariance;   ///< Bin-to-bin covariance matrix (raw counts^2, same unit as the errors).
             bool constrained = false;     ///< True when the covariance-systematic component is the data-constrained posterior (drives the "Constrained Best-Fit" plot labels); false for prior/unconstrained bands, including --legacy-postfit-error.
             /**
              * @brief Construct a PROerrorbar with all vectors/matrices zeroed.

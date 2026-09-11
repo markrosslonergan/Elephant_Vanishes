@@ -517,7 +517,7 @@ multithreaded runs are statistically equivalent but not byte-identical.
 | `--fix dmsq Flux1` | fix parameters at CV (physics or splines) |
 | `--syst-only` | fix ALL physics parameters (nuisance-only fit) |
 | `--statonly` | drop systematics entirely |
-| `--shapeonly` / `--rateonly` | shape-only or single-bin-normalisation analysis |
+| `--shapeonly` (alias `--shape-only`) / `--rateonly` | shape-only or single-bin-normalisation analysis. Shape-only (v3.1 convention): in every collapsed channel the *prediction* is rescaled onto the data's integral before the χ² (the data is never touched, so the statistical term is fixed and the χ² is exactly invariant under an overall rate change); every spline knob and every covariance source (incl. flat/norm/mcstat/external) is projected onto per-channel shape; one dof per channel is lost; `fc`/brazil/`fc-adaptive` inherit the flag. Implies `--area-norm` for plots. |
 | `-c/--chi2 neyman\|pearson\|CNP\|poisson` | χ² metric (default `neyman`; legacy aliases `PROchi`/`PROCNP`/`Poisson`) |
 | `--grad-mode analytic` | gradient strategy: `analytic` (default, alias `exact`) / `central-full` / `one-sided-full` / `central-lin` (Gauss-Newton) / `one-sided-lin` |
 

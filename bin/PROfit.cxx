@@ -150,19 +150,13 @@ int main(int argc, char* argv[])
 
     //Metric Time
     //Metrics are for i_prime only for now
-    PROmetric *metric;
-    if(options.chi2 == "neyman") {
-        metric = new PROchi("", config, prop, &(variable_systs[config.i_prime]), *model, data, options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2, options.shapeonly);
-    } else if(options.chi2 == "pearson") {
-        metric = new PROchi_pearson("", config, prop, &(variable_systs[config.i_prime]), *model, data, options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2, options.shapeonly);
-    } else if(options.chi2 == "CNP") {
-        metric = new PROCNP("", config, prop, &(variable_systs[config.i_prime]), *model, data, options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2, options.shapeonly);
-    } else if(options.chi2 == "poisson") {
-        metric = new PROpoisson("", config, prop, &(variable_systs[config.i_prime]), *model, data, options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2,options.shapeonly);
-    } else {
-        log<LOG_ERROR>(L"%1% || Unrecognized chi2 function %2%. Options: neyman (default), pearson, CNP, poisson (legacy aliases: PROchi, PROCNP, Poisson).") % __func__ % options.chi2.c_str();
-        abort();
-    }
+    // MakeMetric is the single construction point shared with every
+    // pseudo-experiment path, so fc/brazil/fc-adaptive metrics carry the same
+    // options (incl. --shapeonly) as this data-fit metric.
+    PROmetric *metric = MakeMetric(options.chi2, config, prop, &(variable_systs[config.i_prime]), *model, data,
+                                   options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2,
+                                   options.shapeonly).release();
+    if(!metric) abort();
 
     // Set color palette for covar and correlation matrices
     set_matrix_palette();

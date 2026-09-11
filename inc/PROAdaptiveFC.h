@@ -91,6 +91,7 @@ namespace PROfit {
         // to the inner per-throw fits — mirrors fc_args.chi2 / fc_args.binned).
         std::string chi2 = "neyman";
         bool        binned = true;
+        bool        shape_only = false; ///< --shapeonly: every inner metric is built shape-only (must match the data fit).
 
         // ---- PE-bank generation knobs ----
         // Per-cell PE generation follows an additive doubling rule:

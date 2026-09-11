@@ -60,9 +60,12 @@ Eigen::VectorXf PROCNP::statisticalVariances(const Eigen::VectorXf &collapsed_pr
     // mu comes from the physics-only CV when the parameter vector is available, so the
     // statistical part of M does not respond to the nuisance pulls. Fall back to the
     // shifted prediction when it is not.
-    const Eigen::VectorXf &cv = param
+    Eigen::VectorXf cv = param
         ? cachedNoshiftCollapsedCV(param->head(model.nparams), param->size())
         : collapsed_prediction;
+    // Shape-only: the physics-only CV must live on the same per-channel scale as the
+    // (rescaled) prediction it stands in for. collapsed_prediction is already rescaled.
+    if(shape_only && param) cv = cv.cwiseProduct(ChannelNormFactors(config, cv, comparison, config.i_prime));
 
     Eigen::VectorXf variances(comparison.size());
     for(Eigen::Index i = 0; i < comparison.size(); ++i) {
@@ -78,11 +81,11 @@ Eigen::VectorXf PROCNP::statisticalVariances(const Eigen::VectorXf &collapsed_pr
 
 Eigen::VectorXf PROCNP::singleChannelStatVariances(const Eigen::VectorXf &collapsed_cv,
                                                    const Eigen::VectorXf &comparison) const {
-    // This per-channel diagnostic has always differed from the fit path above in three
-    // ways, all preserved here: mu is the *shifted* prediction handed in by the caller
-    // rather than the physics-only CV, the zero test is against the raw observed data
-    // rather than the (possibly area-normalised) comparison spectrum, and mu is not
-    // floored. Doubles match the historical promotion of the 1.0/2.0/3.0 literals.
+    // This per-channel diagnostic has always differed from the fit path above in two
+    // ways, both preserved here: mu is the *shifted* prediction handed in by the caller
+    // rather than the physics-only CV, and mu is not floored. (The comparison is the
+    // observed data in every mode.) Doubles match the historical promotion of the
+    // 1.0/2.0/3.0 literals.
     const Eigen::VectorXf &obs = data.Spec();
     Eigen::VectorXf variances(obs.size());
     for(Eigen::Index i = 0; i < obs.size(); ++i)

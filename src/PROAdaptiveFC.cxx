@@ -757,7 +757,7 @@ AdaptiveFCResult run_adaptive_fc(
 
         AsimovObs obs = compute_asimov_obs(
             config, prop, systs, *model, fitconfig, asimov_data,
-            acfg.chi2, acfg.binned, xaxis_idx, yaxis_idx,
+            acfg.chi2, acfg.binned, acfg.shape_only, xaxis_idx, yaxis_idx,
             bank.cell_center_x, bank.cell_center_y,
             proseed, nthreads, asimov_progress, 0);
 
@@ -914,7 +914,7 @@ AdaptiveFCResult run_adaptive_fc(
 
             AsimovObs obs = compute_asimov_obs(
                 config, prop, systs, *model, fitconfig, throw_data,
-                acfg.chi2, acfg.binned, xaxis_idx, yaxis_idx,
+                acfg.chi2, acfg.binned, acfg.shape_only, xaxis_idx, yaxis_idx,
                 bank.cell_center_x, bank.cell_center_y,
                 proseed, nthreads, silent_progress, 0);
 

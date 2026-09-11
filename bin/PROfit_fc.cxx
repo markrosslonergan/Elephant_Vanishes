@@ -216,7 +216,7 @@ void run_fc(const PROconfig &config, const PROpeller &prop, PROmetric &metric, c
         for(size_t i = 0; i < FCthreads; i++) {
             dchi2s.emplace_back();
             outs.emplace_back();
-            fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, metric.GetSysts(), options.chi2, fakeDataParams, L, scanFitConfig,(*myseed.getThreadSeeds())[i], (int)i, !options.eventbyevent, gof_mode};
+            fc_args args{todo + (i >= addone), &dchi2s.back(), &outs.back(), config, prop, metric.GetSysts(), options.chi2, fakeDataParams, L, scanFitConfig,(*myseed.getThreadSeeds())[i], (int)i, !options.eventbyevent, gof_mode, options.shapeonly};
 
 
             threads.emplace_back([args, &fc_progress]() {

@@ -80,7 +80,7 @@ namespace PROfit{
         std::vector<std::shared_ptr<PROspec>> p_multi_spec; ///< Shared pointers to per-universe variation spectra.
 
         std::vector<int> norm_bins; ///< Bin indices a "norm"/"norm_to_covariance" systematic applies to (never empty: a pattern matching no subchannel is a fatal config error).
-        float norm_value = 0.0f;    ///< Normalisation target integral (used in shape-only mode; only set for "norm" systematics).
+        float norm_value = 0.0f;    ///< Fractional normalisation uncertainty of a "norm"/"norm_to_covariance" systematic (NAME:percent); unrelated to --shapeonly.
         bool force_0_cv = false;    ///< If true, normalise spline shifts by the shift at knob=0.
         std::vector<int> include_only_weights; ///< 1-based indices of weight universes to include; empty = all.
         float scale = 1.0f;         ///< Scale factor applied to all weights (e.g. 0.001 for weights stored as x1000).

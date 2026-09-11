@@ -17,6 +17,7 @@
 #include "PROmetrics/PROchi_pearson.h"
 #include "PROmetrics/PROchi_CNP.h"
 #include "PROmetrics/PROpoisson.h"
+#include "PROmetrics/PROmetricFactory.h"
 #include "PROmetric.h"
 #include "PROspec.h"
 #include "PROcess.h"
@@ -75,6 +76,7 @@ static ThrowGlobalFit run_throw_global_fit(
     const PROfitterConfig &fitconfig,
     const std::string &chi2_kind,
     bool binned,
+    bool shape_only,
     uint32_t seed)
 {
     ThrowGlobalFit res;
@@ -83,13 +85,8 @@ static ThrowGlobalFit run_throw_global_fit(
     const size_t nparams = nphys + nspline;
 
     PROmetric::EvalStrategy strat = binned ? PROmetric::BinnedChi2 : PROmetric::EventByEvent;
-    std::unique_ptr<PROmetric> metric;
-    const std::string chi2_kind_canon = PROmetric::canonicalizeMetricName(chi2_kind);
-    if      (chi2_kind_canon == "neyman")  metric.reset(new PROchi   ("", config, prop, &systs, model, data, strat));
-    else if (chi2_kind_canon == "pearson") metric.reset(new PROchi_pearson("", config, prop, &systs, model, data, strat));
-    else if (chi2_kind_canon == "CNP")     metric.reset(new PROCNP   ("", config, prop, &systs, model, data, strat));
-    else if (chi2_kind_canon == "poisson") metric.reset(new PROpoisson("", config, prop, &systs, model, data, strat));
-    else {
+    std::unique_ptr<PROmetric> metric = MakeMetric(chi2_kind, config, prop, &systs, model, data, strat, shape_only);
+    if (!metric) {
         log<LOG_ERROR>(L"%1% || run_throw_global_fit: unknown chi2 kind '%2%'.") % __func__ % chi2_kind.c_str();
         return res;
     }
@@ -155,6 +152,7 @@ static PROmesh::AMRResult run_wilks_prepass(
     const PROfitterConfig &fitconfig,
     const std::string &chi2_kind,
     bool eventbyevent,
+    bool shape_only,
     size_t xaxis_idx,
     size_t yaxis_idx,
     float x_lo, float x_hi,
@@ -173,7 +171,7 @@ static PROmesh::AMRResult run_wilks_prepass(
     // Thread-local metrics. The first call on each thread allocates;
     // subsequent calls reuse. Mirrors the acquisition in PROsurf::FillSurfaceAMR.
     auto eval_fn = [&config, &prop, &systs, &model, &data, &fitconfig,
-                    chi2_kind, eventbyevent, xaxis_idx, yaxis_idx]
+                    chi2_kind, eventbyevent, shape_only, xaxis_idx, yaxis_idx]
         (const PROmesh::EvalRequest &req) -> PROmesh::EvalResult
     {
         thread_local std::unique_ptr<PROmetric> tls_metric;
@@ -184,16 +182,8 @@ static PROmesh::AMRResult run_wilks_prepass(
             // workers before run_amr returns.
             PROmetric::EvalStrategy strat = eventbyevent
                 ? PROmetric::EventByEvent : PROmetric::BinnedChi2;
-            const std::string chi2_kind_canon = PROmetric::canonicalizeMetricName(chi2_kind);
-            if (chi2_kind_canon == "neyman") {
-                tls_metric.reset(new PROchi("", config, prop, &systs, model, data, strat));
-            } else if (chi2_kind_canon == "pearson") {
-                tls_metric.reset(new PROchi_pearson("", config, prop, &systs, model, data, strat));
-            } else if (chi2_kind_canon == "CNP") {
-                tls_metric.reset(new PROCNP("", config, prop, &systs, model, data, strat));
-            } else if (chi2_kind_canon == "poisson") {
-                tls_metric.reset(new PROpoisson("", config, prop, &systs, model, data, strat));
-            } else {
+            tls_metric = MakeMetric(chi2_kind, config, prop, &systs, model, data, strat, shape_only);
+            if (!tls_metric) {
                 log<LOG_ERROR>(L"%1% || run_wilks_prepass: unknown chi2 kind '%2%'.")
                     % __func__ % chi2_kind.c_str();
                 abort();
@@ -310,7 +300,7 @@ std::vector<PROmesh::AMRResult> generate_throws(
         const uint32_t gf_seed = dseed(proseed.global_rng);
         ThrowGlobalFit gf = run_throw_global_fit(
             config, prop, systs, model, data, fitconfig,
-            acfg.chi2, acfg.binned, gf_seed);
+            acfg.chi2, acfg.binned, acfg.shape_only, gf_seed);
         std::vector<Eigen::VectorXf> caller_seeds;
         if (gf.valid) {
             caller_seeds.push_back(gf.best_fit);
@@ -323,7 +313,7 @@ std::vector<PROmesh::AMRResult> generate_throws(
 
         PROmesh::AMRResult amr = run_wilks_prepass(
             config, prop, systs, model, data, fitconfig,
-            acfg.chi2, !acfg.binned ? true : false,
+            acfg.chi2, !acfg.binned ? true : false, acfg.shape_only,
             xaxis_idx, yaxis_idx,
             x_lo_t, x_hi_t, y_lo_t, y_hi_t,
             opts, nthreads, caller_seeds);

@@ -88,7 +88,10 @@ PROpt::PROpt(int argc, char **argv) {
             "PROjector pre-fit: float the physics parameters instead of fixing them at CV; the "
             "saved posterior is then the physics-marginalized nuisance covariance.");
 
-        auto* shape_flag = app.add_flag("--shapeonly", shapeonly, "Run a shape only analysis");
+        auto* shape_flag = app.add_flag("--shapeonly,--shape-only", shapeonly,
+                "Shape-only analysis: the prediction is rescaled onto the data's integral in every channel before the chi2 "
+                "(data untouched), and every systematic (splines and all covariance sources) is projected onto per-channel shape. "
+                "Implies --area-norm for the plots. fc / brazil / fc-adaptive inherit the flag.");
         auto* rate_flag = app.add_flag("--rateonly", rateonly, "Run a rate only analysis");
         app.add_option("--fit-variable", fit_variable,
                 "Index of the variable to fit, overriding the XML's fit=\"true\" binning. Variables are numbered from 0 within a channel, <bins2D> first then <bins>. No re-`process` is needed: all variables are already in the cached binaries.");

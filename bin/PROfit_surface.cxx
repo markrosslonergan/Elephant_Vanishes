@@ -220,19 +220,11 @@ void run_surface(float &global_fit_chi2, Eigen::VectorXf &global_fit_result, con
             PROspec newSpec = options.statonly_brazil ? PROspec::PoissonVariation(collapsed_cv, dseed(myseed.global_rng)) :
                 PROspec::PoissonVariation(PROspec(CollapseMatrix(config, shifted.Spec()) + L * throwC, CollapseMatrix(config, shifted.Error())), dseed(myseed.global_rng));
             PROdata data(newSpec.Spec(), newSpec.Error());
-            PROmetric *brazil_metric;
-            if(options.chi2 == "neyman") {
-                brazil_metric = new PROchi("", config, prop, &metric.GetSysts(), metric.GetModel(), data, options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-            } else if(options.chi2 == "pearson") {
-                brazil_metric = new PROchi_pearson("", config, prop, &metric.GetSysts(), metric.GetModel(), data, options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-            } else if(options.chi2 == "CNP") {
-                brazil_metric = new PROCNP("", config, prop, &metric.GetSysts(), metric.GetModel(), data, options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-            } else if(options.chi2 == "poisson") {
-                brazil_metric = new PROpoisson("", config, prop, &metric.GetSysts(), metric.GetModel(), data, options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2);
-            } else {
-                log<LOG_ERROR>(L"%1% || Unrecognized chi2 function %2%. Options: neyman, pearson, CNP, poisson.") % __func__ % options.chi2.c_str();
-                abort();
-            }
+            // Same construction point as the data fit (carries --shapeonly).
+            PROmetric *brazil_metric = MakeMetric(options.chi2, config, prop, &metric.GetSysts(), metric.GetModel(), data,
+                                                  options.eventbyevent ? PROmetric::EventByEvent : PROmetric::BinnedChi2,
+                                                  options.shapeonly).release();
+            if(!brazil_metric) abort();
             GlobalFitOptions opt = GlobalFitOptions::Default;
             if(options.progress_bar) opt |= GlobalFitOptions::Progress;
             opt |= GlobalFitOptions::FreqSeedPts;

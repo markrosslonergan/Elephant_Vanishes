@@ -104,6 +104,7 @@ namespace PROfit{
                         std::unique_ptr<TH1D> htmp_slc = std::make_unique<TH1D>(spec.toTH1DSlices(inconfig, global_subchannel_index, other_index));
                         if(htmp_slc){
                             htmp_slc->SetDirectory(nullptr);
+                            if(scale) htmp_slc->Scale(1,"width");
                             hists[subchannel_name+"slc"] = std::move(htmp_slc);
                         }
                         ++global_subchannel_index;
@@ -251,7 +252,7 @@ namespace PROfit{
 
             return spline_graphs;
         }
-    PROerrorbar getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const PROspec &cv_spec, const Eigen::VectorXf &cvparams,bool scale, int other_index, size_t nthrows) {
+    PROerrorbar getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const PROspec &cv_spec, const Eigen::VectorXf &cvparams, int other_index, size_t nthrows) {
 
         Eigen::VectorXf cv = CollapseMatrix(config, cv_spec.Spec(), other_index);
 
@@ -298,20 +299,18 @@ namespace PROfit{
             for(size_t j = 0; j < nerrorsample; ++j) {
                 binconts[j] = specs[j](i);
             }
-            float scale_factor = scale ? 1.0/config.collapsed_bin_widths.at(other_index)(i) :  1.0;
-            if(std::isnan(scale_factor)) scale_factor = 1;
             std::sort(binconts.begin(), binconts.end());
-            float ehi = std::abs((binconts[qhi] - cv(i))*scale_factor);
-            float elo = std::abs((cv(i) - binconts[qlo])*scale_factor);
-            ebar.error_up(i) =  ehi;
-            ebar.error_down(i) =  elo;
-            ebar.error_point(i) = cv(i)*scale_factor;
+            // Raw counts: every PROerrorbar field (incl. covariance) shares one
+            // unit; width/area conversion happens at draw time in plot_channels.
+            ebar.error_up(i) =  std::abs(binconts[qhi] - cv(i));
+            ebar.error_down(i) =  std::abs(cv(i) - binconts[qlo]);
+            ebar.error_point(i) = cv(i);
         }
 	ebar.covariance = cov/nerrorsample;
         return ebar;
     }
 
-    PROerrorbar getCovarianceOnlyErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const Eigen::VectorXf &params, bool scale, int var_index, const Eigen::VectorXf &data_spec) {
+    PROerrorbar getCovarianceOnlyErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const Eigen::VectorXf &params, int var_index, const Eigen::VectorXf &data_spec) {
         Eigen::VectorXf cv = FillSpectra(config, prop, syst, model, params, true, var_index).Spec();
         Eigen::VectorXf cv_coll = CollapseMatrix(config, cv, var_index);
 
@@ -360,19 +359,18 @@ namespace PROfit{
         PROerrorbar ebar(cv_coll.size());
         ebar.constrained = constrained;
         for(int i = 0; i < cv_coll.size(); ++i) {
-            float scale_factor = scale ? 1.0/config.collapsed_bin_widths.at(var_index)(i) : 1.0;
-            if(std::isnan(scale_factor)) scale_factor = 1;
-            float err = std::sqrt(std::max(cov(i,i), 0.0f)) * scale_factor;
+            // Raw counts (see getErrorBand): unit conversion is done at draw time.
+            float err = std::sqrt(std::max(cov(i,i), 0.0f));
             ebar.error_up(i) = err;
             ebar.error_down(i) = err;
-            ebar.error_point(i) = cv_coll(i)*scale_factor;
-            ebar.center_shift(i) = shift(i)*scale_factor;
+            ebar.error_point(i) = cv_coll(i);
+            ebar.center_shift(i) = shift(i);
         }
         ebar.covariance = cov;
         return ebar;
     }
 
-    PROsubtractedErrorBand getErrorBandBkgSubtracted(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const PROspec &cv_spec, const Eigen::VectorXf &cvparams, const std::vector<size_t> &bkg_subchannels, bool scale, int other_index, size_t nthrows) {
+    PROsubtractedErrorBand getErrorBandBkgSubtracted(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const PROspec &cv_spec, const Eigen::VectorXf &cvparams, const std::vector<size_t> &bkg_subchannels, int other_index, size_t nthrows) {
 
         Eigen::VectorXf mask        = build_subchannel_bin_mask(config, bkg_subchannels, other_index);
         Eigen::VectorXf bkg_cv_full = cv_spec.Spec().cwiseProduct(mask);
@@ -408,14 +406,11 @@ namespace PROfit{
             for(size_t j = 0; j < nerrorsample; ++j) {
                 binconts[j] = sig_specs[j](i);
             }
-            float scale_factor = scale ? 1.0/config.collapsed_bin_widths.at(other_index)(i) :  1.0;
-            if(std::isnan(scale_factor)) scale_factor = 1;
             std::sort(binconts.begin(), binconts.end());
-            float ehi = std::abs((binconts[qhi] - cv_sig(i))*scale_factor);
-            float elo = std::abs((cv_sig(i) - binconts[qlo])*scale_factor);
-            result.band.error_up(i) =  ehi;
-            result.band.error_down(i) =  elo;
-            result.band.error_point(i) = cv_sig(i)*scale_factor;
+            // Raw counts (see getErrorBand): unit conversion is done at draw time.
+            result.band.error_up(i) =  std::abs(binconts[qhi] - cv_sig(i));
+            result.band.error_down(i) =  std::abs(cv_sig(i) - binconts[qlo]);
+            result.band.error_point(i) = cv_sig(i);
         }
         result.band.covariance = cov/nerrorsample;
         result.bkg_cv_collapsed = bkg_cv_coll;
@@ -425,6 +420,50 @@ namespace PROfit{
     }
 
     // sort through generic PROspec and combine bins to get projection
+    /**
+     * @brief Apply the drawn-unit conversion (AreaNormalized, BinWidthScaled) to a histogram.
+     * @details Order matters: the area normalisation uses the histogram's RAW integral
+     * (sum of counts) so that a width-scaled curve is a density integrating to 1, not a
+     * curve normalised to the meaningless sum of densities. A histogram that was
+     * already width-scaled when assembled (getCV1DHists/getCV2DHists) passes
+     * already_width_scaled=true: its raw integral is Integral("width") and no second
+     * width division is applied. A zero integral leaves the histogram untouched.
+     * @return The raw integral used for the area normalisation (1 if not normalised).
+     */
+    template<class H>
+    double applyDrawScaling(H *h, PlotOptions opt, bool already_width_scaled = false) {
+        double integral = 1.0;
+        if(bool(opt&PlotOptions::AreaNormalized)) {
+            integral = h->Integral(already_width_scaled ? "width" : "");
+            if(integral > 0 && std::isfinite(integral)) h->Scale(1.0/integral);
+            else { log<LOG_WARNING>(L"%1% || Histogram '%2%' has integral %3%; skipping area normalisation.") % __func__ % h->GetName() % integral; integral = 1.0; }
+        }
+        if(bool(opt&PlotOptions::BinWidthScaled) && !already_width_scaled) h->Scale(1, "width");
+        return integral;
+    }
+
+    /**
+     * @brief Per-bin factor converting a raw-count band quantity into the units of @p drawn.
+     * @details @p drawn was built from the raw per-bin values @p raw and then passed
+     * through applyDrawScaling; the ratio drawn/raw is therefore exactly the unit
+     * conversion (1/width, 1/integral, or both) for that bin. Where raw is zero the
+     * band width is zero too in practice; fall back to the pure width factor so the
+     * TGraph still carries finite errors.
+     */
+    std::vector<float> drawnUnitConversion(const TH1 *drawn, const Eigen::VectorXf &raw, PlotOptions opt) {
+        std::vector<float> conv(raw.size(), 1.0f);
+        for(int bin = 0; bin < raw.size(); ++bin) {
+            const float r = raw(bin);
+            float f = (r != 0 && std::isfinite(r)) ? drawn->GetBinContent(bin+1)/r : 0.0f;
+            if(f == 0 || !std::isfinite(f)) {
+                f = 1.0f;
+                if(bool(opt&PlotOptions::BinWidthScaled)) f /= drawn->GetBinWidth(bin+1);
+            }
+            conv[bin] = f;
+        }
+        return conv;
+    }
+
     Eigen::VectorXf make_1d_spec(Eigen::VectorXf input_spec, size_t nbinsx, size_t nbinsy=1, int offset = 0, int dims=1){
 
         log<LOG_DEBUG>(L"%1% || Making 1d spec nbinsx %2% nbinsy %3% offset %4% dims %5%") % __func__ % nbinsx % nbinsy % offset % dims;
@@ -448,7 +487,9 @@ namespace PROfit{
 
     PROerrorbar* make_1d_err(PROerrorbar errband, size_t nbinsx, size_t nbinsy=1, int offset = 0, int dims=1){
 	// note: since this is just for plotting diagonals, won't worry about filling in
-	//       covariance for collapsed 2d histogram.
+	//       covariance for collapsed 2d histogram. All PROerrorbar fields are raw
+	//       counts, so summing error_point over y and propagating the covariance
+	//       block (dims==2) yields a projected band in the same unit.
         PROerrorbar* errband_1d = new PROerrorbar(nbinsx);
         errband_1d->constrained = errband.constrained;
         log<LOG_DEBUG>(L"%1% || input err_band pt: %2%") % __func__ % errband.error_point;
@@ -486,6 +527,14 @@ namespace PROfit{
 
     double ratio_err(double A, double dA, double B, double dB, double corr){
         return (A/B)*sqrt(pow(dA/A,2)+pow(dB/B,2)-2*(corr*dA*dB/(A*B)));
+    }
+
+    /// Error on an already-computed ratio r from RELATIVE errors dA/A, dB/B (unit-free,
+    /// so A/dA and B/dB may be raw counts while r comes from scaled histograms).
+    double ratio_err_rel(double r, double dA, double A, double dB, double B, double corr){
+        if(A == 0 || B == 0) return 0.0;
+        const double ra = dA/A, rb = dB/B;
+        return r*sqrt(std::max(0.0, ra*ra + rb*rb - 2*corr*ra*rb));
     }
 
     // Draw color for the post-fit best fit and its band: green marks a legacy
@@ -665,13 +714,15 @@ namespace PROfit{
                     cv_ratio->SetBinContent(i + 1, cv_rat);
 
                     if(errband) {
-                        double err_num_up = errband->error_up(bin_idx_num);
-                        double err_num_down = errband->error_down(bin_idx_num);
-                        double err_den_up = errband->error_up(bin_idx_den);
-                        double err_den_down = errband->error_down(bin_idx_den);
-
-                        double pre_err_up = ratio_err(cv_num_val, err_num_up, cv_den_val, err_den_up, pre_corr_val);
-                        double pre_err_down = ratio_err(cv_num_val, err_num_down, cv_den_val, err_den_down, pre_corr_val);
+                        // The band is in raw counts while the histograms may be
+                        // width/area scaled: propagate RELATIVE errors (unit-free)
+                        // and attach them to the drawn ratio.
+                        const double pre_num = errband->error_point(bin_idx_num);
+                        const double pre_den = errband->error_point(bin_idx_den);
+                        double pre_err_up = ratio_err_rel(cv_rat, errband->error_up(bin_idx_num), pre_num,
+                                errband->error_up(bin_idx_den), pre_den, pre_corr_val);
+                        double pre_err_down = ratio_err_rel(cv_rat, errband->error_down(bin_idx_num), pre_num,
+                                errband->error_down(bin_idx_den), pre_den, pre_corr_val);
 
                         channel_errband->SetPointY(i, cv_rat);
                         channel_errband->SetPointEYhigh(i, pre_err_up);
@@ -686,8 +737,10 @@ namespace PROfit{
                     double data_den_val = data_den.GetBinContent(i + 1);
                     double data_rat = (data_den_val > 0) ? data_num_val / data_den_val : 0;
                     data_ratio->SetBinContent(i + 1, data_rat);
-                    data_ratio->SetBinError(i + 1, ratio_err(data_num_val, sqrt(data_num_val), 
-                                data_den_val, sqrt(data_den_val), 0.0));
+                    // Use the stored (Sumw2) errors: sqrt(content) is wrong for
+                    // width/area-scaled or background-subtracted data.
+                    data_ratio->SetBinError(i + 1, ratio_err(data_num_val, data_num.GetBinError(i + 1),
+                                data_den_val, data_den.GetBinError(i + 1), 0.0));
 
                     // Best-fit ratio
                     if(has_bf && bf_ratio) {
@@ -697,15 +750,13 @@ namespace PROfit{
                         bf_ratio->SetBinContent(i + 1, bf_rat);
 
                         if(posterrband && post_channel_errband) {
-                            double post_err_num_up = posterrband->error_up(bin_idx_num);
-                            double post_err_num_down = posterrband->error_down(bin_idx_num);
-                            double post_err_den_up = posterrband->error_up(bin_idx_den);
-                            double post_err_den_down = posterrband->error_down(bin_idx_den);
-
-                            double post_err_up = ratio_err(bf_num_val, post_err_num_up, 
-                                    bf_den_val, post_err_den_up, post_corr_val);
-                            double post_err_down = ratio_err(bf_num_val, post_err_num_down, 
-                                    bf_den_val, post_err_den_down, post_corr_val);
+                            // Relative errors about the (constrained) band center.
+                            const double post_num = posterrband->error_point(bin_idx_num) + posterrband->center_shift(bin_idx_num);
+                            const double post_den = posterrband->error_point(bin_idx_den) + posterrband->center_shift(bin_idx_den);
+                            double post_err_up = ratio_err_rel(bf_rat, posterrband->error_up(bin_idx_num), post_num,
+                                    posterrband->error_up(bin_idx_den), post_den, post_corr_val);
+                            double post_err_down = ratio_err_rel(bf_rat, posterrband->error_down(bin_idx_num), post_num,
+                                    posterrband->error_down(bin_idx_den), post_den, post_corr_val);
 
                             post_channel_errband->SetPointY(i, bf_rat);
                             post_channel_errband->SetPointEYhigh(i, post_err_up);
@@ -717,8 +768,8 @@ namespace PROfit{
 
                             // Error improvement ratio
                             if(errband && err_ratio) {
-                                double pre_err = ratio_err(cv_num_val, errband->error_up(bin_idx_num), 
-                                        cv_den_val, errband->error_up(bin_idx_den), pre_corr_val);
+                                double pre_err = ratio_err_rel(cv_rat, errband->error_up(bin_idx_num), errband->error_point(bin_idx_num),
+                                        errband->error_up(bin_idx_den), errband->error_point(bin_idx_den), pre_corr_val);
                                 if(pre_err > 0) {
                                     err_ratio->SetBinContent(i + 1, post_err_up / pre_err);
                                 }
@@ -1562,7 +1613,10 @@ namespace PROfit{
 
                     if(cv){
                         if(config.m_channel_variable_dims[channel][other_index] == 2){
-                            cv2dhists = getCV2DHists(*cv, config, (bool)(opt & PlotOptions::BinWidthScaled), other_index);
+                            // RAW counts: slices/projections are taken from the raw
+                            // TH2 and scaled individually; only the drawn heatmap
+                            // clone is width/area scaled.
+                            cv2dhists = getCV2DHists(*cv, config, false, other_index);
                         }
 
                         cv1dhists = getCV1DHists(*cv, config, (bool)(opt & PlotOptions::BinWidthScaled), other_index);
@@ -1688,9 +1742,12 @@ namespace PROfit{
                         TPad p2d("p2d", "p2d", 0, 0, 1, 1);
                         p2d.cd();
                         cv_hist->SetTitle(hist_title.c_str());
-                        cv_hist->Draw("colz");
+                        TH2D *cv_hist_drawn = (TH2D*)cv_hist->Clone();
+                        cv_hist_drawn->SetDirectory(nullptr);
+                        applyDrawScaling(cv_hist_drawn, opt);
+                        cv_hist_drawn->Draw("colz");
                         draw_chi_label(full_chi_label);
-                        objs[mdc+"_cv2d"] = detached(cv_hist->Clone());
+                        objs[mdc+"_cv2d"] = detached(cv_hist_drawn);
                         c.cd();
                         p2d.Draw();
                         drawVersionWatermark(&c);
@@ -1706,24 +1763,23 @@ namespace PROfit{
                                 for(size_t ybin = 0; ybin < channel_nbins_y; ybin++) {
                                     const size_t flat_bin = xbin*channel_nbins_y+ybin + tot_offset;
                                     float val = tmp_bf(flat_bin);
-                                    // Fold the posterior covariance pull in: the 2D map,
-                                    // and every slice/projection taken from it below,
-                                    // shows the CONSTRAINED best fit.
-                                    if(posterrband) {
-                                        float denom = posterrband->error_point(flat_bin);
-                                        float f = (denom != 0 && std::isfinite(denom)) ? val/denom : 1.0f;
-                                        if(!std::isfinite(f)) f = 1.0f;
-                                        val += f*posterrband->center_shift(flat_bin);
-                                    }
+                                    // Fold the posterior covariance pull in (raw counts,
+                                    // same unit as the band): the 2D map, and every
+                                    // slice/projection taken from it below, shows the
+                                    // CONSTRAINED best fit.
+                                    if(posterrband) val += posterrband->center_shift(flat_bin);
                                     bf_hist->SetBinContent(xbin+1, ybin+1, val);
                                 }
                             }
 
                             TPad pbfd("pbfd", "pbfd", 0, 0, 1, 1);
                             pbfd.cd();
-                            bf_hist->Draw("colz");
+                            TH2D *bf_hist_drawn = (TH2D*)bf_hist->Clone();
+                            bf_hist_drawn->SetDirectory(nullptr);
+                            applyDrawScaling(bf_hist_drawn, opt);
+                            bf_hist_drawn->Draw("colz");
                             draw_chi_label(full_chi_label);
-                            objs[mdc+"_bestfit2d"] = detached(bf_hist->Clone());
+                            objs[mdc+"_bestfit2d"] = detached(bf_hist_drawn);
                             c.cd();
                             pbfd.Draw();
                             drawVersionWatermark(&c);
@@ -1744,9 +1800,12 @@ namespace PROfit{
                             }
                             TPad pdata("pdata", "pdata", 0, 0, 1, 1);
                             pdata.cd();
-                            data_hist->Draw("colz");
+                            TH2D *data_hist_drawn = (TH2D*)data_hist->Clone();
+                            data_hist_drawn->SetDirectory(nullptr);
+                            applyDrawScaling(data_hist_drawn, opt);
+                            data_hist_drawn->Draw("colz");
                             draw_chi_label(full_chi_label);
-                            objs[mdc+"_data2d"] = detached(data_hist->Clone());
+                            objs[mdc+"_data2d"] = detached(data_hist_drawn);
                             c.cd();
                             pdata.Draw();
                             drawVersionWatermark(&c);
@@ -1754,7 +1813,26 @@ namespace PROfit{
                         }
 
 
-                        float scale = 1.0;
+                        // Raw per-bin contents of a 1D hist (for the unit conversion below).
+                        auto hist_contents = [](const TH1 *h) {
+                            Eigen::VectorXf v(h->GetNbinsX());
+                            for(int b = 0; b < h->GetNbinsX(); ++b) v(b) = h->GetBinContent(b+1);
+                            return v;
+                        };
+                        // Build a band graph anchored on an (already scaled) slice from
+                        // the raw-count band widths, converting each bin into the
+                        // slice's drawn unit.
+                        auto slice_band = [&](TH1D *slice, const Eigen::VectorXf &slice_raw, const PROerrorbar &band,
+                                              size_t nslice, auto flat_index) {
+                            TGraphAsymmErrors *graph = new TGraphAsymmErrors(slice);
+                            const std::vector<float> conv = drawnUnitConversion(slice, slice_raw, opt);
+                            for(size_t b = 0; b < nslice; ++b) {
+                                const size_t flat_bin = flat_index(b);
+                                graph->SetPointEYhigh(b, conv[b]*band.error_up(flat_bin));
+                                graph->SetPointEYlow(b, conv[b]*band.error_down(flat_bin));
+                            }
+                            return graph;
+                        };
 
                         // Plot the first variable in bins of the second variable
                         for(size_t ybin = 1; ybin <= channel_nbins_y; ybin++) {
@@ -1763,40 +1841,25 @@ namespace PROfit{
                                 groups[xbin] = {xbin*channel_nbins_y + (ybin-1)};
                             }
                             const std::string slice_chi_label = chi_label(make_projection(groups));
-                            TGraphAsymmErrors *post_channel_errband = NULL; 
-                            if(posterrband) {
-                                post_channel_errband = new TGraphAsymmErrors(bf_hist->ProjectionX("xslc_bf", ybin, ybin));
-                                for(size_t xbin = 0; xbin < channel_nbins_x; ++xbin) {
-                                    const size_t flat_bin = xbin * channel_nbins_y + (ybin - 1) + tot_offset;
-                                    // Anchored via the shifted bf_hist projection above.
-                                    post_channel_errband->SetPointEYhigh(xbin, scale*posterrband->error_up(flat_bin));
-                                    post_channel_errband->SetPointEYlow(xbin, scale*posterrband->error_down(flat_bin));
-                                }
-                                objs[mdc+"_posterrband_slice_ybin"+std::to_string(ybin)] = detached(post_channel_errband->Clone());
-                            }
-
-                            TGraphAsymmErrors* channel_errband = NULL;
-                            if(errband) {
-                                channel_errband = new TGraphAsymmErrors(cv_hist->ProjectionX("xslc_cv", ybin, ybin));
-                                for(size_t xbin = 0; xbin < channel_nbins_x; ++xbin) {
-                                    const size_t flat_bin = xbin * channel_nbins_y + (ybin - 1) + tot_offset;
-                                    channel_errband->SetPointEYhigh(xbin, scale*errband->error_up(flat_bin));
-                                    channel_errband->SetPointEYlow(xbin, scale*errband->error_down(flat_bin));
-                                }
-                                objs[mdc+"_preerrband_slice_ybin"+std::to_string(ybin)] = detached(channel_errband->Clone());
-                            }
+                            auto flat_x = [&](size_t xbin) { return xbin * channel_nbins_y + (ybin - 1) + tot_offset; };
 
                             std::string ybin_str = make_slice_title(ybin, ytitle2d,
                                                                     edges_y[ybin-1], edges_y[ybin],
                                                                     xtitle2d);
 
+                            // Slices are projected from the RAW TH2s and scaled here.
                             TH1D cv_hist_slice = *(cv_hist->ProjectionX("slc", ybin, ybin));
+                            const Eigen::VectorXf cv_slice_raw = hist_contents(&cv_hist_slice);
+                            applyDrawScaling(&cv_hist_slice, opt);
                             cv_hist_slice.SetTitle(ybin_str.c_str());
                             cv_hist_slice.GetYaxis()->SetTitle(ytitle.c_str());
                             objs[mdc+"_cv_slice_ybin"+std::to_string(ybin)] = detached(cv_hist_slice.Clone());
                             TH1D *bf_hist_slice = NULL;
+                            Eigen::VectorXf bf_slice_raw;
                             if(best_fit){
                                 bf_hist_slice = bf_hist->ProjectionX("bfslc", ybin, ybin);
+                                bf_slice_raw = hist_contents(bf_hist_slice);
+                                applyDrawScaling(bf_hist_slice, opt);
                                 bf_hist_slice->SetTitle(ybin_str.c_str());
                                 bf_hist_slice->GetYaxis()->SetTitle(ytitle.c_str());
                                 objs[mdc+"_bestfit_slice_ybin"+std::to_string(ybin)] = detached(bf_hist_slice->Clone());
@@ -1804,6 +1867,7 @@ namespace PROfit{
                             TH1D* data_hist_slice = NULL;
                             if(data){
                                 data_hist_slice = data_hist->ProjectionX("dataslc", ybin, ybin);
+                                applyDrawScaling(data_hist_slice, opt);
                                 data_hist_slice->SetTitle(dat_str.c_str());
                                 data_hist_slice->GetYaxis()->SetTitle(ytitle.c_str());
                                 data_hist_slice->SetLineColor(kBlack);
@@ -1812,6 +1876,18 @@ namespace PROfit{
                                 data_hist_slice->SetMarkerColor(kBlack);
                                 data_hist_slice->SetMarkerSize(1);
                                 objs[mdc+"_data_slice_ybin"+std::to_string(ybin)] = detached(data_hist_slice->Clone());
+                            }
+
+                            TGraphAsymmErrors *post_channel_errband = NULL;
+                            if(posterrband && bf_hist_slice) {
+                                // Anchored via the shifted bf_hist projection.
+                                post_channel_errband = slice_band(bf_hist_slice, bf_slice_raw, *posterrband, channel_nbins_x, flat_x);
+                                objs[mdc+"_posterrband_slice_ybin"+std::to_string(ybin)] = detached(post_channel_errband->Clone());
+                            }
+                            TGraphAsymmErrors* channel_errband = NULL;
+                            if(errband) {
+                                channel_errband = slice_band(&cv_hist_slice, cv_slice_raw, *errband, channel_nbins_x, flat_x);
+                                objs[mdc+"_preerrband_slice_ybin"+std::to_string(ybin)] = detached(channel_errband->Clone());
                             }
 
                             plot_hist1ds(&c, &cv_hist_slice, channel_errband, {}, {}, bf_hist_slice, post_channel_errband, data_hist_slice, &dat_str, {}, ybin_str, ratio_titles, filename, bounds, slice_chi_label, postfit_color(posterrband));
@@ -1825,48 +1901,44 @@ namespace PROfit{
                                 groups[ybin] = {(xbin-1)*channel_nbins_y + ybin};
                             }
                             const std::string slice_chi_label = chi_label(make_projection(groups));
-                            TGraphAsymmErrors *post_channel_errband = NULL;
-                            if(posterrband) {
-                                post_channel_errband = new TGraphAsymmErrors(bf_hist->ProjectionY("yslc_bf", xbin, xbin));
-                                for(size_t ybin = 0; ybin < channel_nbins_y; ++ybin) {
-                                    const size_t flat_bin = (xbin-1)*channel_nbins_y+ybin+tot_offset;
-                                    // Anchored via the shifted bf_hist projection above.
-                                    post_channel_errband->SetPointEYhigh(ybin, scale*posterrband->error_up(flat_bin));
-                                    post_channel_errband->SetPointEYlow(ybin, scale*posterrband->error_down(flat_bin));
-                                }
-                                objs[mdc+"_posterrband_slice_xbin"+std::to_string(xbin)] = detached(post_channel_errband->Clone());
-                            }
-
-                            TGraphAsymmErrors *channel_errband = NULL;
-                            if(errband) {
-                                channel_errband = new TGraphAsymmErrors(cv_hist->ProjectionY("yslc_cv", xbin, xbin));
-                                for(size_t ybin = 0; ybin < channel_nbins_y; ++ybin) {
-                                    const size_t flat_bin = (xbin-1)*channel_nbins_y+ybin+tot_offset;
-                                    channel_errband->SetPointEYhigh(ybin, scale*errband->error_up(flat_bin));
-                                    channel_errband->SetPointEYlow(ybin, scale*errband->error_down(flat_bin));
-                                }
-                                objs[mdc+"_preerrband_slice_xbin"+std::to_string(xbin)] = detached(channel_errband->Clone());
-                            }
+                            auto flat_y = [&](size_t ybin) { return (xbin-1)*channel_nbins_y+ybin+tot_offset; };
 
                             std::string xbin_str = make_slice_title(xbin, xtitle2d,
                                                                     edges_x[xbin-1], edges_x[xbin],
                                                                     ytitle2d);
                             TH1D cv_hist_slice = *(cv_hist->ProjectionY("yslc", xbin, xbin));
+                            const Eigen::VectorXf cv_slice_raw = hist_contents(&cv_hist_slice);
+                            applyDrawScaling(&cv_hist_slice, opt);
                             cv_hist_slice.SetTitle(xbin_str.c_str());
                             cv_hist_slice.GetYaxis()->SetTitle(ytitle.c_str());
                             objs[mdc+"_cv_slice_xbin"+std::to_string(xbin)] = detached(cv_hist_slice.Clone());
 
                             TH1D *bf_hist_slice = NULL;
+                            Eigen::VectorXf bf_slice_raw;
                             if(best_fit) {
                                 bf_hist_slice = bf_hist->ProjectionY("bfyslc", xbin, xbin);
+                                bf_slice_raw = hist_contents(bf_hist_slice);
+                                applyDrawScaling(bf_hist_slice, opt);
                                 bf_hist_slice->SetTitle(xbin_str.c_str());
                                 bf_hist_slice->GetYaxis()->SetTitle(ytitle.c_str());
                                 objs[mdc+"_bestfit_slice_xbin"+std::to_string(xbin)] = detached(bf_hist_slice->Clone());
                             }
 
+                            TGraphAsymmErrors *post_channel_errband = NULL;
+                            if(posterrband && bf_hist_slice) {
+                                post_channel_errband = slice_band(bf_hist_slice, bf_slice_raw, *posterrband, channel_nbins_y, flat_y);
+                                objs[mdc+"_posterrband_slice_xbin"+std::to_string(xbin)] = detached(post_channel_errband->Clone());
+                            }
+                            TGraphAsymmErrors *channel_errband = NULL;
+                            if(errband) {
+                                channel_errband = slice_band(&cv_hist_slice, cv_slice_raw, *errband, channel_nbins_y, flat_y);
+                                objs[mdc+"_preerrband_slice_xbin"+std::to_string(xbin)] = detached(channel_errband->Clone());
+                            }
+
                             TH1D *data_hist_slice = NULL;
                             if(data) {
                                 data_hist_slice = data_hist->ProjectionY("datayslc", xbin, xbin);
+                                applyDrawScaling(data_hist_slice, opt);
                                 data_hist_slice->SetTitle(dat_str.c_str());
                                 data_hist_slice->GetYaxis()->SetTitle(ytitle.c_str());
                                 data_hist_slice->SetLineColor(kBlack);
@@ -1905,7 +1977,6 @@ namespace PROfit{
                                 sub_hist->SetLineColor(kBlack);
                                 const std::string &color = config.m_subchannel_colors[channel][subchannel];
                                 sub_hist->SetFillColor(color == "NONE" ? kRed-7 : config.HexToROOTColor(color));
-                                if(bool(opt&PlotOptions::BinWidthScaled)) sub_hist->Scale(1, "width");
 
                                 const bool skip_stack = skip_stack_subchannels &&
                                     std::find(skip_stack_subchannels->begin(), skip_stack_subchannels->end(), global_index) != skip_stack_subchannels->end();
@@ -1916,13 +1987,12 @@ namespace PROfit{
                                 cv_hist_y.Add(sub_hist.get());
                                 cv_subchannel_hists_y.push_back(std::move(sub_hist));
                             }
-                            if(bool(opt&PlotOptions::AreaNormalized)) {
-                                const float integral = cv_hist_y.Integral();
-                                cv_hist_y.Scale(1/integral);
-                                if(cvstack_y) {
-                                    TList *stack_hists = cvstack_y->GetHists();
-                                    for(const auto &&obj: *stack_hists) ((TH1*)obj)->Scale(1/integral);
-                                }
+                            // Area-normalise on RAW counts, then width-scale; the
+                            // stack members share the total's integral.
+                            const double integral_y = applyDrawScaling(&cv_hist_y, opt);
+                            for(auto &sh: cv_subchannel_hists_y) {
+                                if(bool(opt&PlotOptions::AreaNormalized)) sh->Scale(1.0/integral_y);
+                                if(bool(opt&PlotOptions::BinWidthScaled)) sh->Scale(1, "width");
                             }
                             objs[mdc+"_cv1d_y"] = detached(cv_hist_y.Clone());
                             if(cvstack_y) objs[mdc+"_cvstack_y"] = detached(cvstack_y->Clone());
@@ -1930,8 +2000,7 @@ namespace PROfit{
 
                         TH1D *bf_hist_y = best_fit ? bf_hist->ProjectionY("bf_integrated_x") : NULL;
                         if(bf_hist_y) {
-                            if(bool(opt&PlotOptions::BinWidthScaled)) bf_hist_y->Scale(1, "width");
-                            if(bool(opt&PlotOptions::AreaNormalized)) bf_hist_y->Scale(1/bf_hist_y->Integral());
+                            applyDrawScaling(bf_hist_y, opt);
                             objs[mdc+"_bestfit_y"] = detached(bf_hist_y->Clone());
                         }
                         TH1D *data_hist_y = data ? data_hist->ProjectionY("data_integrated_x") : NULL;
@@ -1941,8 +2010,7 @@ namespace PROfit{
                             data_hist_y->SetMarkerStyle(kFullCircle);
                             data_hist_y->SetMarkerColor(kBlack);
                             data_hist_y->SetMarkerSize(1);
-                            if(bool(opt&PlotOptions::BinWidthScaled)) data_hist_y->Scale(1, "width");
-                            if(bool(opt&PlotOptions::AreaNormalized)) data_hist_y->Scale(1/data_hist_y->Integral());
+                            applyDrawScaling(data_hist_y, opt);
                             objs[mdc+"_data_y"] = detached(data_hist_y->Clone());
                         }
 
@@ -1959,14 +2027,15 @@ namespace PROfit{
                                                                     tot_offset+x2*channel_nbins_y+ybin);
                                 double error = std::sqrt(std::max(0.0, variance));
                                 if(bool(opt&PlotOptions::AreaNormalized) || bool(opt&PlotOptions::BinWidthScaled)) {
-                                    // central is shifted, so the ebar-units reference is
-                                    // error_point + center_shift: keeps the conversion
-                                    // factor free of the pull.
+                                    // Raw-count band -> drawn units: central is the
+                                    // scaled projection of (error_point + center_shift),
+                                    // so their ratio is the per-bin conversion factor.
                                     double point = 0.0;
                                     for(size_t xbin = 0; xbin < channel_nbins_x; ++xbin)
                                         point += band.error_point(tot_offset+xbin*channel_nbins_y+ybin)
                                                + band.center_shift(tot_offset+xbin*channel_nbins_y+ybin);
                                     if(point != 0.0 && std::isfinite(point)) error *= central->GetBinContent(ybin+1)/point;
+                                    else if(bool(opt&PlotOptions::BinWidthScaled)) error /= central->GetBinWidth(ybin+1);
                                 }
                                 graph->SetPointEYhigh(ybin, error);
                                 graph->SetPointEYlow(ybin, error);
@@ -1999,8 +2068,6 @@ namespace PROfit{
                     for(size_t bin = 0; bin < channel_nbins_x; ++bin) {
                         cv_hist.SetBinContent(bin+1, 0);
                     }
-                    if(bool(opt&PlotOptions::BinWidthScaled))
-                        cv_hist.Scale(1, "width");
 
                     THStack *cvstack = NULL;
                     std::vector<std::pair<std::string, const char*>> subplots;
@@ -2024,8 +2091,10 @@ namespace PROfit{
                         }
 
                         if(bool(opt&PlotOptions::AreaNormalized)) {
-                            float integral = cv_hist.Integral();
-                            cv_hist.Scale(1 / integral);
+                            // cv_hist is assembled from getCV1DHists output, which is
+                            // already width-scaled when BinWidthScaled: normalise by
+                            // the RAW integral (sum of counts), never by the sum of densities.
+                            const double integral = applyDrawScaling(&cv_hist, opt, /*already_width_scaled=*/true);
                             if(bool(opt&PlotOptions::CVasStack)) {
                                 TList *stlists = (TList*)cvstack->GetHists();
                                 for(const auto&& obj: *stlists){
@@ -2040,54 +2109,37 @@ namespace PROfit{
                     TGraphAsymmErrors *channel_errband = NULL;
                     if(errband) {
                         channel_errband = new TGraphAsymmErrors(&cv_hist);
-
+                        // Band widths are raw counts; cv_hist carries the drawn unit.
+                        const std::vector<float> conv = drawnUnitConversion(&cv_hist, errband_1d->error_point, opt);
                         for(size_t bin = 0; bin < channel_nbins_x; ++bin) {
-                            float scale = 1.0;
-                            if(bool(opt&PlotOptions::AreaNormalized) || bool(opt&PlotOptions::BinWidthScaled)) {
-                                // Guard 0/0 when the (possibly bkg-subtracted) CV is zero
-                                // in a bin; error_point is already bin-width scaled, so
-                                // 1.0 is the exact fallback in the BinWidthScaled case.
-                                float denom = errband_1d->error_point(bin);
-                                scale = (denom != 0 && std::isfinite(denom)) ? channel_errband->GetPointY(bin) / denom : 1.0f;
-                                if(!std::isfinite(scale)) scale = 1.0f;
-                            }
-
-                            channel_errband->SetPointEYhigh(bin, scale*(errband_1d->error_up(bin)));
-                            channel_errband->SetPointEYlow(bin, scale*(errband_1d->error_down(bin)));
+                            channel_errband->SetPointEYhigh(bin, conv[bin]*(errband_1d->error_up(bin)));
+                            channel_errband->SetPointEYlow(bin, conv[bin]*(errband_1d->error_down(bin)));
                         }
                         objs[mdc+"_preerrband"] = detached(channel_errband->Clone());
                     }
 
                     TH1D* bf_hist = NULL;
-                    // ebar-units -> drawn-units conversion per bin, computed from the
-                    // UNSHIFTED curve (the shift below must not contaminate it).
+                    // raw-count -> drawn-unit conversion per bin for the post-fit band.
                     std::vector<float> post_conv;
                     if(best_fit) {
                         bf_hist = new TH1D(("bf"+std::to_string(global_channel_index)).c_str(), "", channel_nbins_x, edges.data());
                         bf_hist->SetDirectory(nullptr); // name reused across variables/calls; avoid collision warnings
+                        // Fold the posterior covariance pull into the drawn curve (raw
+                        // counts, same unit as the band): this is the CONSTRAINED best
+                        // fit (spline best fit + data constraint on the covariance
+                        // systematics), the same center the band is measured about.
+                        // Zero shift for prior bands.
+                        Eigen::VectorXf bf_raw = bf_spec_1d;
+                        if(posterrband) bf_raw += posterrband_1d->center_shift;
                         for(size_t bin = 0; bin < channel_nbins_x; ++bin) {
-                            bf_hist->SetBinContent(bin+1, bf_spec_1d(bin));
+                            // Sum in double (the TH1D's own precision) so unflagged runs stay
+                            // bitwise identical to the pre-raw-band code path.
+                            double v = bf_spec_1d(bin);
+                            if(posterrband) v += (double)posterrband_1d->center_shift(bin);
+                            bf_hist->SetBinContent(bin+1, v);
                         }
-                        if(bool(opt&PlotOptions::BinWidthScaled))
-                            bf_hist->Scale(1, "width");
-                        if(bool(opt&PlotOptions::AreaNormalized))
-                            bf_hist->Scale(1.0/bf_hist->Integral());
-                        // Fold the posterior covariance pull into the drawn curve:
-                        // this is the CONSTRAINED best fit (spline best fit + data
-                        // constraint on the covariance systematics), the same center
-                        // the band is measured about. Zero shift for prior bands.
-                        if(posterrband) {
-                            post_conv.assign(channel_nbins_x, 1.0f);
-                            for(size_t bin = 0; bin < channel_nbins_x; ++bin) {
-                                if(bool(opt&PlotOptions::AreaNormalized) || bool(opt&PlotOptions::BinWidthScaled)) {
-                                    float denom = posterrband_1d->error_point(bin);
-                                    float f = (denom != 0 && std::isfinite(denom)) ? bf_hist->GetBinContent(bin+1)/denom : 1.0f;
-                                    if(!std::isfinite(f)) f = 1.0f;
-                                    post_conv[bin] = f;
-                                }
-                                bf_hist->SetBinContent(bin+1, bf_hist->GetBinContent(bin+1) + post_conv[bin]*posterrband_1d->center_shift(bin));
-                            }
-                        }
+                        applyDrawScaling(bf_hist, opt);
+                        if(posterrband) post_conv = drawnUnitConversion(bf_hist, bf_raw, opt);
                         objs[mdc+"_bestfit"] = detached(bf_hist->Clone());
                     }
 
@@ -2108,10 +2160,7 @@ namespace PROfit{
                         data_hist->SetMarkerStyle(kFullCircle);
                         data_hist->SetMarkerColor(kBlack);
                         data_hist->SetMarkerSize(1);
-                        if(bool(opt&PlotOptions::BinWidthScaled))
-                            data_hist->Scale(1, "width");
-                        if(bool(opt&PlotOptions::AreaNormalized))
-                            data_hist->Scale(1.0/data_hist->Integral());
+                        applyDrawScaling(data_hist, opt);
                         objs[mdc+"_data"] = detached(data_hist->Clone());
                     }
 
@@ -2119,8 +2168,7 @@ namespace PROfit{
                     if(posterrband) {
                         // bf_hist already IS the constrained best fit (shift folded in
                         // above), so the graph is born anchored at the band center;
-                        // only the widths need the unit conversion, taken from the
-                        // pre-shift factors so the shift does not contaminate them.
+                        // only the raw-count widths need the unit conversion.
                         post_channel_errband = new TGraphAsymmErrors(bf_hist);
                         for(size_t bin = 0; bin < channel_nbins_x; ++bin) {
                             float scale = post_conv.empty() ? 1.0f : post_conv[bin];

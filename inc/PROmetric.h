@@ -345,7 +345,7 @@ namespace PROfit {
             const PROmodel &model; ///< Physics model (non-owning reference).
             const PROdata data;    ///< Observed data spectrum (owned copy).
             EvalStrategy strat;    ///< Evaluation strategy.
-            bool shape_only;       ///< If true, evaluate area-normalised spectra.
+            bool shape_only;       ///< Shape-only: the prediction is rescaled onto the data's per-channel integral before comparison (PROtocall ShapeRescaleToData); the data is never touched.
             std::vector<float> physics_param_fixed; ///< Fixed physics-parameter values (empty = none fixed).
             int fixed_index;       ///< Index fixed during a scan (-1-like sentinel = none).
             float fixed_val;       ///< Value at which the scanned parameter is fixed.

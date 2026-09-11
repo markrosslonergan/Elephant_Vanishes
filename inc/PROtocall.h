@@ -93,6 +93,36 @@ namespace PROfit{
     Eigen::VectorXf CollapseMatrix(const PROconfig &inconfig, const Eigen::VectorXf& full_vector, int other_index);
 
     /**
+     * @brief Shape-only per-channel normalisation factors r_c = sum_c(data) / sum_c(pred).
+     * @details One factor per collapsed (mode x detector x channel) block, returned expanded
+     * to every collapsed bin of that block. A channel with sum_c(pred) <= 0 gets r_c = 1.
+     * This is THE shape-only convention (v3.1+): the PREDICTION is rescaled onto the
+     * data's channel integral and compared against the untouched data, so the chi^2 is
+     * exactly invariant under pred -> k*pred and the statistical term never moves with
+     * the fit. (Pre-v3.1 the data was rescaled instead, which made the Neyman/CNP/Poisson
+     * stat term shrink with the prediction and biased fits toward lower total rate.)
+     * @param inconfig       Analysis configuration.
+     * @param collapsed_pred Prediction in the collapsed bin space of @p other_index.
+     * @param data           Observed (collapsed) data spectrum.
+     * @param other_index    Variable index.
+     * @return Per-collapsed-bin factor vector.
+     */
+    Eigen::VectorXf ChannelNormFactors(const PROconfig &inconfig, const Eigen::VectorXf &collapsed_pred, const Eigen::VectorXf &data, int other_index);
+
+    /**
+     * @brief Shape-only: rescale a full-binning prediction onto the data per channel.
+     * @details Returns spec .* (T r) with r = ChannelNormFactors(T^T spec, data): every
+     * subchannel bin of channel c is multiplied by the same r_c. Optionally hands back r.
+     * @param inconfig    Analysis configuration.
+     * @param full_spec   Prediction on the full (uncollapsed) binning of @p other_index.
+     * @param data        Observed (collapsed) data spectrum.
+     * @param other_index Variable index.
+     * @param r_out       If non-null, receives the collapsed-space factor vector.
+     * @return The rescaled full-binning prediction.
+     */
+    Eigen::VectorXf ShapeRescaleToData(const PROconfig &inconfig, const Eigen::VectorXf &full_spec, const Eigen::VectorXf &data, int other_index, Eigen::VectorXf *r_out = nullptr);
+
+    /**
      * @brief Return the PROfit ASCII-art icon string.
      * @return Icon string for display at programme startup.
      */

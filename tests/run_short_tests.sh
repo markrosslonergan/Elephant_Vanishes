@@ -134,6 +134,17 @@ run_test t10plot          --use-fake-data plot --with-splines --with-covar
 run_test t11plotwidth     --use-fake-data --scale-by-width plot
 run_test t12plotbkgsub    --use-fake-data plot --bkg-subtract background
 
+# --- 4b. Shape-only (prediction rescaled onto the data per channel; every
+# systematic shape-projected). Covers all three chi2 families that differ in
+# their statistical term, the scan warm-start path, FC (flag must reach the
+# per-universe metrics), and the width+area plot combination.
+run_test t12sglobal       --use-fake-data --shapeonly global
+run_test t12sglobalcnp    --use-fake-data --shapeonly -c CNP global
+run_test t12sglobalpois   --use-fake-data --shapeonly -c poisson global
+run_test t12sprofile      --use-fake-data --shapeonly profile
+run_test t12sfc           --use-fake-data --shapeonly fc -u 2
+run_test t12splotwidth    --use-fake-data --shapeonly --scale-by-width plot
+
 # --- 5. Feldman-Cousins -------------------------------------------------------
 run_test t13fc            --use-fake-data fc -u 2
 

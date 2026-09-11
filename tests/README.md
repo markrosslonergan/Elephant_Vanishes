@@ -29,6 +29,7 @@ short, seeded (`--seed 405 -n 1 --preset fast fast`) instance of each workflow:
 | t07 | `profile` (all parameters) |
 | t08–t09 | `surface` dense grid and `--surface-amr` |
 | t10–t12 | `plot` with `--with-splines`, `--scale-by-width`, `--bkg-subtract` |
+| t12s* | `--shapeonly`: global (neyman/CNP/poisson), profile, fc, and `--scale-by-width plot` |
 | t13 | `fc` (2 universes) |
 | t14 (×5) | full `fc-adaptive` chain: build-mesh → init-bank → print-bank → asimov → brazil |
 | t15–t16 | `mcmc` (1 chain), `scale-test` benchmark smoke |

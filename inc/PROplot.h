@@ -322,12 +322,14 @@ namespace PROfit{
      * @param model       Physics model.
      * @param cv_spec     CV predicted spectrum.
      * @param cvparams    CV physics parameter vector.
-     * @param scale       If true, divide errors by bin width.
      * @param other_index Variable index.
      * @param nthrows     Number of systematic throws (default 2500).
-     * @return PROerrorbar with asymmetric per-bin uncertainties.
+     * @return PROerrorbar with asymmetric per-bin uncertainties. Every field (error_up/down,
+     *         error_point, center_shift AND covariance) is in RAW collapsed counts; bin-width
+     *         and area-normalisation conversion happens at draw time inside plot_channels
+     *         (drawnUnitConversion), so all consumers see one unit.
      */
-    PROerrorbar getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const PROspec &cv_spec, const Eigen::VectorXf &cvparams,bool scale=false, int other_index=0, size_t nthrows=2500);
+    PROerrorbar getErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const PROspec &cv_spec, const Eigen::VectorXf &cvparams, int other_index=0, size_t nthrows=2500);
 
     /**
      * @brief Compute an error band analytically from the covariance-type systematics alone.
@@ -341,9 +343,8 @@ namespace PROfit{
      * @param syst      Systematic object (only covariance-type systs contribute).
      * @param model     Physics model.
      * @param params    Parameter vector at which to evaluate the spectrum (e.g. best fit).
-     * @param scale     If true, divide errors by bin width.
      * @param var_index Variable index.
-     * @return PROerrorbar with symmetric per-bin uncertainties and the bin covariance.
+     * @return PROerrorbar with symmetric per-bin uncertainties and the bin covariance (raw counts, see getErrorBand).
      */
     /** @brief Analytic error band from the summed covariance (no MCMC). With an empty
      *  @p data_spec this is the prior band sqrt(diag(Sigma)) about the prediction. When a
@@ -352,18 +353,17 @@ namespace PROfit{
      *  Sigma(C+Sigma)^-1 u and covariance Sigma - Sigma(C+Sigma)^-1 Sigma, restricted to
      *  active bins with data>0 (PROchi convention, C = diag(max(data,1))). Exact when the
      *  covariance systs are the only free parameters (the post-fit degenerate-chain path). */
-    PROerrorbar getCovarianceOnlyErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const Eigen::VectorXf &params, bool scale=false, int var_index=0, const Eigen::VectorXf &data_spec = Eigen::VectorXf());
+    PROerrorbar getCovarianceOnlyErrorBand(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const Eigen::VectorXf &params, int var_index=0, const Eigen::VectorXf &data_spec = Eigen::VectorXf());
 
     /**
      * @brief Result of getErrorBandBkgSubtracted: a signal-only error band plus the
      * background pieces needed to correct the data points.
-     * @details `band` follows getErrorBand's conventions (error_up/down/point bin-width
-     * scaled if requested; covariance unscaled). The three bkg vectors are deliberately
-     * UNSCALED counts because they feed PROdata, which is width/area scaled later inside
-     * plot_channels.
+     * @details `band` follows getErrorBand's conventions (every field in raw collapsed
+     * counts). The three bkg vectors are likewise unscaled counts because they feed
+     * PROdata, which is width/area scaled later inside plot_channels.
      */
     struct PROsubtractedErrorBand {
-        PROerrorbar band;                         ///< Signal-only band; error_point = (CV - bkg_CV), bin-width scaled if scale.
+        PROerrorbar band;                         ///< Signal-only band; error_point = (CV - bkg_CV), raw counts.
         Eigen::VectorXf bkg_cv_collapsed;         ///< Collapsed bkg CV, unscaled counts.
         Eigen::VectorXf bkg_sigma_collapsed;      ///< Per-bin sqrt(Var) of the bkg systematic throws, unscaled.
         Eigen::VectorXf bkg_mcstat_var_collapsed; ///< Collapsed sum of squared MC-stat errors in bkg bins, unscaled.
@@ -388,12 +388,11 @@ namespace PROfit{
      * @param cv_spec         CV predicted spectrum (full binning, UNsubtracted).
      * @param cvparams        CV physics parameter vector.
      * @param bkg_subchannels Global subchannel indices to subtract (from find_subchannels_by_pattern).
-     * @param scale           If true, divide band errors by bin width.
      * @param other_index     Variable index.
      * @param nthrows         Number of systematic throws (default 2500).
      * @return PROsubtractedErrorBand (see struct docs).
      */
-    PROsubtractedErrorBand getErrorBandBkgSubtracted(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const PROspec &cv_spec, const Eigen::VectorXf &cvparams, const std::vector<size_t> &bkg_subchannels, bool scale=false, int other_index=0, size_t nthrows=2500);
+    PROsubtractedErrorBand getErrorBandBkgSubtracted(const PROconfig &config, const PROpeller &prop, const PROsyst &syst, const PROmodel &model, const PROspec &cv_spec, const Eigen::VectorXf &cvparams, const std::vector<size_t> &bkg_subchannels, int other_index=0, size_t nthrows=2500);
 
     /**
      * @brief Produce a bar chart showing fractional prior uncertainty per systematic.
@@ -486,7 +485,6 @@ namespace PROfit{
      * @param best_fit   Best-fit parameter vector (used as the starting point and as reference).
      * @param posteriors Output vector of TH1D histograms for each spline nuisance parameter.
      * @param post_covar Output post-fit parameter covariance matrix (splines only).
-     * @param scale      If true, divide error bars by bin width.
      * @param var_index  Variable index (default 0).
      * @param data_spec  Optional collapsed data spectrum. When empty (default), the band
      *                   includes prior throws of the covariance-type systematics. When given,
@@ -500,7 +498,7 @@ namespace PROfit{
      * @return PROerrorbar with per-bin asymmetric uncertainties and the histogram covariance.
      */
     template<class T, class P>
-        PROerrorbar getMCMCErrorBand(Metropolis<T, P> met, size_t burnin, size_t iterations, const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, Eigen::VectorXf &param_err_lo, Eigen::VectorXf &param_err_hi, bool scale = false, int var_index=0, PROgressBar *pbar = nullptr, const Eigen::VectorXf &data_spec = Eigen::VectorXf()) {
+        PROerrorbar getMCMCErrorBand(Metropolis<T, P> met, size_t burnin, size_t iterations, const PROconfig &config, const PROpeller &prop, PROmetric &metric, const Eigen::VectorXf &best_fit, std::vector<TH1D> &posteriors, Eigen::MatrixXf &post_covar, Eigen::VectorXf &param_err_lo, Eigen::VectorXf &param_err_hi, int var_index=0, PROgressBar *pbar = nullptr, const Eigen::VectorXf &data_spec = Eigen::VectorXf()) {
             for(size_t i = 0; i < metric.GetSysts().GetNSplines(); ++i)
                 posteriors.emplace_back("", (";"+config.m_mcgen_variation_plotname_map.at(metric.GetSysts().spline_names[i])).c_str(), 60, -3, 3);
 
@@ -686,8 +684,6 @@ namespace PROfit{
                 for(size_t j = 0; j < specs.size(); ++j) {
                     binconts[j] = specs[j](i);
                 }
-                float scale_factor = scale ? 1.0/config.collapsed_bin_widths.at(var_index)(i) :  1.0;
-                if(std::isnan(scale_factor)) scale_factor = 1;
                 std::sort(binconts.begin(), binconts.end());
                 // Percentile widths about the sample MEDIAN, not cv: for the
                 // data-constrained band the sample cloud is pulled toward the
@@ -695,15 +691,16 @@ namespace PROfit{
                 // into a fat one straddling the best fit. The displacement is
                 // reported separately in center_shift; error_point stays the
                 // best-fit spectrum (plot code uses it for unit conversion).
+                // Raw counts throughout (see getErrorBand); unit conversion is done at draw time.
                 float med = binconts[int(0.500*specs.size())];
-                float ehi = (binconts[int(0.840*specs.size())] - med)*scale_factor;
-                float elo = (med - binconts[int(0.160*specs.size())])*scale_factor;
+                float ehi = (binconts[int(0.840*specs.size())] - med);
+                float elo = (med - binconts[int(0.160*specs.size())]);
                 ebar.error_up(i) =  ehi;
                 ebar.error_down(i) =  elo;
-                ebar.error_point(i) = cv(i)*scale_factor;
-                ebar.center_shift(i) = use_data ? analytic_shift(i)*scale_factor
-                                                : (med - cv(i))*scale_factor;
-                log<LOG_INFO>(L"%1% || ErrorBand bin %2% %3% %4% %5% %6% shift %7%") % __func__ % i % cv(i) % ehi % elo % scale_factor % ebar.center_shift(i);
+                ebar.error_point(i) = cv(i);
+                ebar.center_shift(i) = use_data ? analytic_shift(i)
+                                                : (med - cv(i));
+                log<LOG_INFO>(L"%1% || ErrorBand bin %2% %3% %4% %5% shift %6%") % __func__ % i % cv(i) % ehi % elo % ebar.center_shift(i);
             }
             ebar.covariance = post_hist_covar;
 

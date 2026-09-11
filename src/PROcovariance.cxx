@@ -3,6 +3,7 @@
 #include "PROdata.h"
 #include "PROlog.h"
 #include "PROtocall.h"
+#include "PROsyst.h"
 #include <Eigen/Eigen>
 #include <cmath>
 using namespace PROfit;
@@ -121,20 +122,27 @@ float PROcovariance::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &g
     // iteration.
     PROspec result = FillSpectra(config, peller, *syst, model, param, fs_cache, strat != EventByEvent, config.i_prime);
 
-    Eigen::VectorXf normdata = shape_only
-        ? data.Normalize(config,result)
-        : data.Spec();
+    // Shape-only: rescale the PREDICTION onto the data per channel (r_c = ΣD_c/ΣP_c) and
+    // compare against the untouched data. The chi² is then exactly invariant under
+    // P → kP, the statistical variance is fixed (Neyman's constant cache stays valid),
+    // and the systematic covariance is built from the rescaled prediction. The
+    // per-channel factors are kept for the analytic-gradient chain rule below.
+    Eigen::VectorXf shape_r;
+    const Eigen::VectorXf spec_full = shape_only
+        ? ShapeRescaleToData(config, result.Spec(), data.Spec(), config.i_prime, &shape_r)
+        : result.Spec();
+    const Eigen::VectorXf &normdata = data.Spec();
 
     // Collapse once and reuse for the variance hook, the delta, and the diagnostics
     // below. PROpearson's variance IS the collapsed prediction, so handing the hook an
     // already-collapsed vector removes a second CollapseMatrix from every evaluation.
-    const Eigen::VectorXf collapsed_mc_spec = CollapseMatrix(config, result.Spec());
+    const Eigen::VectorXf collapsed_mc_spec = CollapseMatrix(config, spec_full);
     const Eigen::VectorXf stat_variances = statisticalVariances(collapsed_mc_spec, normdata, &param);
 
     // Collapsed systematic covariance computed as S^T F S with S = diag(spec)*T
     // kept sparse — the full-binning dense diag(s)*F*diag(s) is never
     // materialized (this runs on every evaluation).
-    Eigen::MatrixXf collapsed_full_covariance = CollapsedScaledCovariance(config, syst->fractional_covariance, result.Spec());
+    Eigen::MatrixXf collapsed_full_covariance = CollapsedScaledCovariance(config, syst->fractional_covariance, spec_full);
 
     // non_empty_indices and reduced_collapsed_stat_covariance are precomputed once
     // (PROcovariance::buildConstantStatCache) only when the concrete metric guarantees
@@ -269,13 +277,11 @@ float PROcovariance::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &g
         if (analytic) {
             // ----- Fully analytic gradient -----
             // Notation (θ = all parameters, physics + nuisance):
-            //   s(θ)  full-binning MC spectrum (result.Spec(), N bins)
+            //   s(θ)  full-binning MC spectrum (spec_full, N bins). In shape_only mode
+            //         this is the per-channel rescaled prediction s̃ = s ∘ (T r), and G
+            //         below is its chain-rule Jacobian (see the shape_only block).
             //   T     collapsing matrix (N × n_c, sparse): collapsed spectrum c = Tᵀ s
-            //   d     comparison spectrum (collapsed), idx = usable active bins.
-            //         In shape_only mode d is the area-normalised data held FIXED at
-            //         the base point — the same frozen-normdata convention every FD
-            //         mode below uses (see compute_delta_at) — so d is θ-independent
-            //         here in all modes.
+            //   d     observed data (collapsed), idx = usable active bins; θ-independent.
             //   δ(θ)  = c(idx) − d(idx)                                  (reduced residual)
             //   F     fractional systematic covariance (N × N, symmetric)
             //   M(θ)  = diag(var(idx)) + [Tᵀ diag(s) F diag(s) T](idx,idx) (stat + syst)
@@ -335,10 +341,28 @@ float PROcovariance::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &g
             for(size_t k = 0; k < reduced_size; ++k)
                 u_c(non_empty_indices[k]) = Minv_delta_b(k);
             const Eigen::VectorXf w_full = T * u_c;
-            const Eigen::VectorXf g_full = syst->fractional_covariance * w_full.cwiseProduct(result.Spec());
+            const Eigen::VectorXf g_full = syst->fractional_covariance * w_full.cwiseProduct(spec_full);
             const Eigen::VectorXf wg = w_full.cwiseProduct(g_full);
 
             Eigen::MatrixXf G = FillSpectraGradient(config, peller, *syst, model, param, fs_cache, config.i_prime);
+            if(shape_only) {
+                // Chain rule for the per-channel rescale s̃ = s ∘ (T r), r_c = ΣD_c / ΣP_c(θ):
+                //   ds̃_i/dθ = r_c ds_i/dθ + s_i dr_c/dθ,   dr_c/dθ = −(r_c/ΣP_c) Σ_{b∈c} (TᵀG)_b
+                // (i in channel c). A rank-one correction per channel block.
+                const Eigen::MatrixXf TtG_raw = T.transpose() * G;
+                const Eigen::VectorXf collapsed_raw = T.transpose() * result.Spec();
+                const auto full_blocks = PROsyst::ChannelBlocks(config, config.i_prime);
+                size_t cstart = 0, gci = 0;
+                for(const auto &[fs, fl]: full_blocks) {
+                    const size_t cl = config.GetChannelVariableBins(gci, config.i_prime).NBins();
+                    const float sumP = collapsed_raw.segment(cstart, cl).sum();
+                    const float rc = shape_r(cstart);
+                    Eigen::RowVectorXf dr = Eigen::RowVectorXf::Zero(G.cols());
+                    if(sumP > 0.0f) dr = -(rc / sumP) * TtG_raw.middleRows(cstart, cl).colwise().sum();
+                    G.middleRows(fs, fl) = rc * G.middleRows(fs, fl) + result.Spec().segment(fs, fl) * dr;
+                    cstart += cl; ++gci;
+                }
+            }
             Eigen::MatrixXf TtG = T.transpose() * G; // collapsed-space Jacobian (ncollapsed × nparams)
             Eigen::VectorXf grad_vec = 2.0f * (TtG(idx, Eigen::all).transpose() * Minv_delta_b)
                                      - 2.0f * (G.transpose() * wg);
@@ -364,17 +388,17 @@ float PROcovariance::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &g
 
         // ----- Helpers (closures over the outer scope) -----
         // compute_delta_at: build the reduced delta vector at an arbitrary
-        // param. Uses the BASE call's normdata(idx) — matches the existing
-        // semantics that the FD loop holds normdata fixed (relevant only for
-        // shape_only mode, where data.Normalize depends on result; the
-        // existing FD already holds it constant).
+        // param. In shape_only mode the prediction is re-rescaled onto the data
+        // at param_at, exactly as the value above does, so every FD mode
+        // differentiates the same function operator() returns.
         auto compute_delta_at = [&](const Eigen::VectorXf &param_at,
                                     Eigen::VectorXf &delta_out) -> bool {
             if(model.model_constraint &&
                !model.model_constraint(param_at.segment(0, model.nparams))) return false;
             PROspec rl = FillSpectra(config, peller, *syst, model, param_at, fs_cache,
                                      strat != EventByEvent, config.i_prime);
-            Eigen::VectorXf cmcl = CollapseMatrix(config, rl.Spec());
+            const Eigen::VectorXf sl = shape_only ? ShapeRescaleToData(config, rl.Spec(), normdata, config.i_prime) : rl.Spec();
+            Eigen::VectorXf cmcl = CollapseMatrix(config, sl);
             delta_out = cmcl(idx) - normdata(idx);
             return true;
         };
@@ -387,8 +411,9 @@ float PROcovariance::operator()(const Eigen::VectorXf &param, Eigen::VectorXf &g
                !model.model_constraint(param_at.segment(0, model.nparams))) return false;
             PROspec rl = FillSpectra(config, peller, *syst, model, param_at, fs_cache,
                                      strat != EventByEvent, config.i_prime);
-            Eigen::MatrixXf cfcl  = CollapsedScaledCovariance(config, syst->fractional_covariance, rl.Spec());
-            Eigen::VectorXf cmcl  = CollapseMatrix(config, rl.Spec());
+            const Eigen::VectorXf sl = shape_only ? ShapeRescaleToData(config, rl.Spec(), normdata, config.i_prime) : rl.Spec();
+            Eigen::MatrixXf cfcl  = CollapsedScaledCovariance(config, syst->fractional_covariance, sl);
+            Eigen::VectorXf cmcl  = CollapseMatrix(config, sl);
             Eigen::MatrixXf gM_lo;
             if(statisticalVariancesDependOnPrediction()) {
                 const Eigen::VectorXf varied_stat = statisticalVariances(cmcl, normdata, &param_at);
@@ -533,8 +558,11 @@ float PROcovariance::getSingleChannelChi(size_t global_channel_index, const PROs
     size_t nbin = config.m_channel_variable_bins[config.GetLocalChannelIndexFromGlobalChannelIndex(global_channel_index)][var_index].NBins();
     size_t startBin = config.GetCollapsedGlobalVariableBinStart(global_channel_index, var_index);
 
-    const Eigen::VectorXf collapsed_cv = CollapseMatrix(config, cv.Spec());
-    const Eigen::VectorXf comparison = shape_only ? data.Normalize(config, cv) : data.Spec();
+    // Shape-only: the prediction is rescaled onto the data per channel (same
+    // convention as operator()); the comparison is always the observed data.
+    const Eigen::VectorXf cv_full = shape_only ? ShapeRescaleToData(config, cv.Spec(), data.Spec(), config.i_prime) : cv.Spec();
+    const Eigen::VectorXf collapsed_cv = CollapseMatrix(config, cv_full);
+    const Eigen::VectorXf &comparison = data.Spec();
     const Eigen::VectorXf stat_variances = singleChannelStatVariances(collapsed_cv, comparison);
 
     // Restrict to this channel's active bins. Only meaningful for the fitting variable
@@ -553,7 +581,7 @@ float PROcovariance::getSingleChannelChi(size_t global_channel_index, const PROs
 
     Eigen::MatrixXf M = Eigen::MatrixXf(stat_variances(idx).asDiagonal());
     if(syst->GetNCovar()){
-        Eigen::MatrixXf collapsed_full_covariance = CollapsedScaledCovariance(config, syst->fractional_covariance, cv.Spec());
+        Eigen::MatrixXf collapsed_full_covariance = CollapsedScaledCovariance(config, syst->fractional_covariance, cv_full);
         M += collapsed_full_covariance(idx, idx);
     }
 

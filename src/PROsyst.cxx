@@ -8,13 +8,75 @@
 #include <Eigen/Eigen>
 #include <mutex>
 #include <random>
+#include <set>
 
 namespace PROfit {
 
-    bool PROsyst::shape_only = false;
+    std::vector<std::pair<size_t,size_t>> PROsyst::ChannelBlocks(const PROconfig &config, int binning) {
+        std::vector<std::pair<size_t,size_t>> blocks;
+        size_t global_subchannel_index = 0, global_channel_index = 0;
+        for(size_t im = 0; im < config.m_num_modes; ++im)
+            for(size_t id = 0; id < config.m_num_detectors; ++id)
+                for(size_t ic = 0; ic < config.m_num_channels; ++ic) {
+                    const size_t start = config.GetGlobalVariableBinStart(global_subchannel_index, binning);
+                    const size_t len = config.m_num_subchannels[ic] * config.GetChannelVariableBins(global_channel_index, binning).NBins();
+                    blocks.emplace_back(start, len);
+                    global_subchannel_index += config.m_num_subchannels[ic];
+                    ++global_channel_index;
+                }
+        return blocks;
+    }
+
+    void PROsyst::ShapeRescaleUniverse(const std::vector<std::pair<size_t,size_t>> &blocks, const Eigen::VectorXf &cv, Eigen::VectorXf &var) {
+        for(const auto &[start, len]: blocks) {
+            const float sv = var.segment(start, len).sum();
+            if(sv == 0.0f || !std::isfinite(sv)) continue;
+            var.segment(start, len) *= cv.segment(start, len).sum() / sv;
+        }
+    }
+
+    Eigen::MatrixXf PROsyst::ShapeProjector(const std::vector<std::pair<size_t,size_t>> &blocks, const Eigen::VectorXf &cv) {
+        Eigen::MatrixXf R = Eigen::MatrixXf::Identity(cv.size(), cv.size());
+        for(const auto &[start, len]: blocks) {
+            const float na = cv.segment(start, len).sum();
+            if(na == 0.0f || !std::isfinite(na)) continue;   // empty channel: nothing to project
+            // B_ij = N_j / N_a on the block: every row of the block gets the same row vector.
+            R.block(start, start, len, len).rowwise() -= (cv.segment(start, len) / na).transpose();
+        }
+        return R;
+    }
 
     PROsyst::PROsyst( const PROpeller &prop, const PROconfig &config, const std::vector<SystStruct>& systs, bool shapeonly, int other_index, const PROmodel* model, const Eigen::VectorXf* params) : other_index(other_index) {
         shape_only = shapeonly;
+        if(shape_only) {
+            // Per-channel blocks and a nominal spectrum for every binning any systematic
+            // lives in (splines keep their own binning) plus this PROsyst's own.
+            std::set<int> binnings{other_index};
+            for(const auto &syst: systs) if(syst.binning >= 0) binnings.insert(syst.binning);
+            for(int b: binnings) {
+                shape_blocks[b] = ChannelBlocks(config, b);
+                const Eigen::Index nb = config.m_num_variable_bins_total[b];
+                Eigen::VectorXf nominal;
+                // Prefer the nominal MC carried by any weight-based systematic in this
+                // binning (it is exactly the CV every fractional matrix is normalised to).
+                for(const auto &syst: systs) {
+                    const int sb = syst.binning < 0 ? other_index : syst.binning;
+                    if(sb == b && syst.p_cv && syst.p_cv->GetNbins() == nb) { nominal = syst.p_cv->Spec(); break; }
+                }
+                if(nominal.size() == 0) {
+                    // No weight-based systematic in this binning (e.g. flat/norm/external only):
+                    // bin the CV event weights directly.
+                    nominal = Eigen::VectorXf::Zero(nb);
+                    if(b < (int)prop.variable_bin_indices.size())
+                        for(size_t ev = 0; ev < prop.NEvent(); ++ev) {
+                            const int bin = prop.variable_bin_indices[b][ev];
+                            if(bin >= 0 && bin < nb) nominal(bin) += prop.added_weights[ev];
+                        }
+                }
+                shape_nominal[b] = nominal;
+            }
+            log<LOG_INFO>(L"%1% || Shape-only mode: systematics for variable %2% will be projected onto per-channel shape (%3% channel blocks).") % __func__ % other_index % shape_blocks.at(other_index).size();
+        }
         for(const auto& syst: systs) {
             log<LOG_DEBUG>(L"%1% || syst mode: %2%") % __func__ % syst.mode.c_str();
             if(syst.mode == "spline" || syst.mode == "norm" || syst.mode == "hist1d" || syst.mode == "hist2d" || syst.mode == "explicit_spline") {
@@ -215,6 +277,26 @@ namespace PROfit {
             ++n_covar;
         }
 
+        if(shape_only && covmat.size()) {
+            // Shape-only: project EVERY covariance source (flat, norm_to_covariance,
+            // external, mcstat, covariance_to_spline residual, ...) onto per-channel shape.
+            // Universe-built matrices are already shape (R is idempotent on them); the
+            // parametric sources carry full normalisation until projected here.
+            const Eigen::MatrixXf R = ShapeProjector(shape_blocks.at(other_index), shape_nominal.at(other_index));
+            size_t nproj = 0;
+            for(size_t i = 0; i < covmat.size(); ++i) {
+                if(covmat[i].rows() != R.rows() || covmat[i].cols() != R.cols()) {
+                    log<LOG_WARNING>(L"%1% || Shape-only: covariance %2% is %3%x%4%, expected %5%; not projected.") % __func__ % i % covmat[i].rows() % covmat[i].cols() % R.rows();
+                    continue;
+                }
+                Eigen::MatrixXf proj = R * covmat[i] * R.transpose();
+                covmat[i] = 0.5f * (proj + proj.transpose());
+                if(i < corrmat.size()) corrmat[i] = GenerateCorrMatrix(covmat[i]);
+                ++nproj;
+            }
+            log<LOG_INFO>(L"%1% || Shape-only: projected %2% covariance source(s) onto per-channel shape for variable %3%.") % __func__ % nproj % other_index;
+        }
+
         if(covmat.size()==0){
             int nbins =  config.m_num_variable_bins_total[other_index];
             Eigen::MatrixXf fracM = Eigen::MatrixXf::Zero(nbins, nbins);
@@ -277,6 +359,7 @@ namespace PROfit {
         ret.fractional_covariance = ret.covmat.size() ? ret.SumMatrices()
             : Eigen::MatrixXf::Constant(fractional_covariance.rows(), fractional_covariance.cols(), 0.0f);
         ret.other_index = other_index;
+        ret.shape_only = shape_only;
         ret.cov2spline_debug_info = cov2spline_debug_info;
         log<LOG_DEBUG>(L"%1% | Done Subset.") % __func__ ;
         return ret;
@@ -327,6 +410,7 @@ namespace PROfit {
         ret.fractional_covariance = ret.covmat.size() ? ret.SumMatrices()
             : Eigen::MatrixXf::Constant(fractional_covariance.rows(), fractional_covariance.cols(), 0.0f);
         ret.other_index = other_index;
+        ret.shape_only = shape_only;
         ret.cov2spline_debug_info = cov2spline_debug_info;
         return ret;
     }
@@ -362,6 +446,7 @@ namespace PROfit {
         ret.fractional_covariance = ret.covmat.size() ? ret.SumMatrices()
             : Eigen::MatrixXf::Constant(fractional_covariance.rows(), fractional_covariance.cols(), 0.0f);
         ret.other_index = other_index;
+        ret.shape_only = shape_only;
         return ret;
     }
 
@@ -391,6 +476,12 @@ namespace PROfit {
         Eigen::MatrixXf cv_inverse = cv.asDiagonal().inverse();
         Eigen::MatrixXf frac_covar_matrix = cv_inverse * mat * cv_inverse;
         PROsyst::toFiniteMatrix(frac_covar_matrix);
+        if(shape_only) {
+            // Products of several shape-only spline ratios preserve each channel's
+            // integral only to first order; project the throw covariance exactly.
+            const Eigen::MatrixXf R = ShapeProjector(ChannelBlocks(config, other_index), cv);
+            frac_covar_matrix = R * frac_covar_matrix * R.transpose();
+        }
 
         return frac_covar_matrix;
     }
@@ -449,7 +540,7 @@ namespace PROfit {
 
         //generate matrix only if it's not already in the map
         if(syst_map.find(sysname) == syst_map.end()){
-            std::pair<Eigen::MatrixXf, Eigen::MatrixXf> matrices = PROsyst::GenerateCovarMatrices(syst);
+            std::pair<Eigen::MatrixXf, Eigen::MatrixXf> matrices = PROsyst::GenerateCovarMatrices(syst, shape_only ? &shapeBlocksFor(syst) : nullptr);
 
             // If inflate is set, scale the covariance by inflate^2 (uncertainty scales by inflate).
             // The correlation matrix is unchanged by a constant scaling.
@@ -620,9 +711,9 @@ namespace PROfit {
         return;
     }
 
-    std::pair<Eigen::MatrixXf, Eigen::MatrixXf>  PROsyst::GenerateCovarMatrices(const SystStruct& sys_obj){
+    std::pair<Eigen::MatrixXf, Eigen::MatrixXf>  PROsyst::GenerateCovarMatrices(const SystStruct& sys_obj, const std::vector<std::pair<size_t,size_t>> *shape_blocks){
         //get fractional covar
-        Eigen::MatrixXf frac_covar_matrix = PROsyst::GenerateFracCovarMatrix(sys_obj);
+        Eigen::MatrixXf frac_covar_matrix = PROsyst::GenerateFracCovarMatrix(sys_obj, shape_blocks);
 
         //get fractional covariance matrix
         Eigen::MatrixXf corr_covar_matrix = PROsyst::GenerateCorrMatrix(frac_covar_matrix);
@@ -630,34 +721,39 @@ namespace PROfit {
         return std::pair<Eigen::MatrixXf, Eigen::MatrixXf>({frac_covar_matrix, corr_covar_matrix});
     }
 
-    Eigen::MatrixXf PROsyst::GenerateFullCovarMatrix(const SystStruct& sys_obj){
+    Eigen::MatrixXf PROsyst::GenerateFullCovarMatrix(const SystStruct& sys_obj, const std::vector<std::pair<size_t,size_t>> *shape_blocks){
         int n_universe = sys_obj.GetNUniverse(); 
         std::string sys_name = sys_obj.GetSysName();
 
         const PROspec& cv_spec = sys_obj.CV();
         int nbins = cv_spec.GetNbins();
-        float cv_integral = cv_spec.Spec().sum(); 
 
         //build full covariance matrix 
         Eigen::MatrixXf full_covar_matrix = Eigen::MatrixXf::Zero(nbins, nbins);
         for(int i = 0; i != n_universe; ++i){
 
-            PROspec spec_diff;
-            if(shape_only){
-                spec_diff = cv_spec - sys_obj.Variation(i)*(cv_integral/sys_obj.Variation(i).Spec().sum());
+            if(shape_blocks){
+                // Shape-only: rescale the universe to the CV integral PER CHANNEL, the same
+                // domain the metric's per-channel prediction/data rescale uses. (A global
+                // integral would leave channel-to-channel normalisation modes in the matrix
+                // that the residual can never see.)
+                Eigen::VectorXf var = sys_obj.Variation(i).Spec();
+                ShapeRescaleUniverse(*shape_blocks, cv_spec.Spec(), var);
+                const Eigen::VectorXf spec_diff = cv_spec.Spec() - var;
+                full_covar_matrix += (spec_diff * spec_diff.transpose()) / static_cast<float>(n_universe);
             }else{
-                spec_diff = cv_spec - sys_obj.Variation(i);
+                PROspec spec_diff = cv_spec - sys_obj.Variation(i);
+                full_covar_matrix += (spec_diff.Spec() * spec_diff.Spec().transpose() ) / static_cast<float>(n_universe);
             }
-            full_covar_matrix += (spec_diff.Spec() * spec_diff.Spec().transpose() ) / static_cast<float>(n_universe);
         }
 
         return full_covar_matrix;
     }
 
-    Eigen::MatrixXf PROsyst::GenerateFracCovarMatrix(const SystStruct& sys_obj){
+    Eigen::MatrixXf PROsyst::GenerateFracCovarMatrix(const SystStruct& sys_obj, const std::vector<std::pair<size_t,size_t>> *shape_blocks){
 
         //build full covariance matrix 
-        Eigen::MatrixXf full_covar_matrix = PROsyst::GenerateFullCovarMatrix(sys_obj);
+        Eigen::MatrixXf full_covar_matrix = PROsyst::GenerateFullCovarMatrix(sys_obj, shape_blocks);
 
         //build fractional covariance matrix 
         //first, get the matrix with diagonal being reciprocal of CV spectrum prdiction
@@ -811,7 +907,6 @@ namespace PROfit {
     void PROsyst::FillSpline(const SystStruct& syst, bool unmirrored) {
         std::vector<PROspec> ratios;
         ratios.reserve(syst.p_multi_spec.size());
-        float cv_integral = syst.p_cv->Spec().sum();
 
         bool found0 = false;
         int knob0_index = -1;  // Index of knobval=0 in ratios vector
@@ -829,15 +924,15 @@ namespace PROfit {
                 knob0_index = ratios.size();  // Will be set after push_back below
             }
 
-            float mod = shape_only ? cv_integral / syst.p_multi_spec[i]->Spec().sum() : 1.0;
-            /*
-               if (mod < 0) {
-               log<LOG_ERROR>(L"%1% || Spline shift weight is negative with value %2% for systematic %3%") % __func__ % mod % syst.systname.c_str();
-               log<LOG_ERROR>(L"Terminating.");
-               exit(EXIT_FAILURE);
-               }
-               */
-            ratios.push_back(((*syst.p_multi_spec[i]) * mod) / *syst.p_cv);
+            if(shape_only) {
+                // Shape-only: each knob's spectrum is rescaled to the CV integral PER
+                // CHANNEL before the ratio is taken, so the spline moves shape only.
+                PROspec var = *syst.p_multi_spec[i];
+                ShapeRescaleUniverse(shapeBlocksFor(syst), syst.p_cv->Spec(), var.Spec());
+                ratios.push_back(var / *syst.p_cv);
+            } else {
+                ratios.push_back((*syst.p_multi_spec[i]) / *syst.p_cv);
+            }
             knobvals.push_back(syst.knobval[i]);
         }
         if (!found0) {
@@ -967,11 +1062,17 @@ namespace PROfit {
     }
 
     void PROsyst::FillSplinesFromCovariance(const SystStruct& syst) {
-        Eigen::MatrixXf frac_cov = PROsyst::GenerateFracCovarMatrix(syst);
+        Eigen::MatrixXf frac_cov = PROsyst::GenerateFracCovarMatrix(syst, shape_only ? &shapeBlocksFor(syst) : nullptr);
         FillSplinesFromCovarianceMatrix(frac_cov, syst);
     }
 
     void PROsyst::FillSplinesFromCovarianceMatrix(Eigen::MatrixXf frac_cov, const SystStruct& syst) {
+        if(shape_only && shape_blocks.count(syst.binning < 0 ? other_index : syst.binning)) {
+            // Shape-only: decompose the per-channel SHAPE part of the matrix (exact projector;
+            // idempotent on a matrix whose universes were already rescaled per channel).
+            const Eigen::MatrixXf R = ShapeProjector(shapeBlocksFor(syst), shapeNominalFor(syst));
+            frac_cov = R * frac_cov * R.transpose();
+        }
         // Capture pre-symmetrization asymmetry as a sanity number for debug plots.
         const float pre_symm_asymmetry = (frac_cov - frac_cov.transpose()).norm();
         // symmetrize to kill any float-asymmetry before eigendecomposition

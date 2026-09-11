@@ -8,11 +8,11 @@ PROchi::PROchi(const std::string tag, const PROconfig &conin, const PROpeller &p
                std::vector<float> physics_param_fixed)
     : PROcovariance(tag, conin, pin, systin, modelin, datain, strat, shape_only,
                     physics_param_fixed) {
-    // Neyman variance is the observed data, so outside shape_only mode both the set of
-    // usable bins and their variances are constant across the whole fit and can be built
-    // once here. In shape_only mode the comparison spectrum is renormalised against every
-    // prediction, so the cache would go stale and operator() rebuilds per call.
-    if(!shape_only) buildConstantStatCache(data.Spec());
+    // Neyman variance is the observed data, so both the set of usable bins and their
+    // variances are constant across the whole fit and can be built once here. This holds
+    // in shape_only mode too: it is the PREDICTION that is rescaled per channel there,
+    // never the data.
+    buildConstantStatCache(data.Spec());
 }
 
 Eigen::VectorXf PROchi::statisticalVariances(
@@ -32,11 +32,8 @@ Eigen::VectorXf PROchi::singleChannelStatVariances(
     //     iffier if there are data events in the bin, we may want to implement some
     //     error handling there.
     //
-    // shape_only is deliberately excluded from the floor, matching the long-standing
-    // behaviour of this function: there the comparison is an area-normalised spectrum
-    // whose scale has nothing to do with an event count, so flooring it at 1 event
-    // would swamp the statistic.
-    if(shape_only) return comparison;
+    // The comparison is the observed data in every mode (shape_only rescales the
+    // prediction, not the data), so the one-event floor always applies.
     return comparison.array().cwiseMax(1.0f).matrix();
 }
 

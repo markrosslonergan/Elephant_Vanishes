@@ -105,7 +105,10 @@ namespace PROfit {
              * @param prop        MC event store (used for spline building).
              * @param config      Analysis configuration.
              * @param systs       Vector of SystStruct objects; one per systematic variation.
-             * @param shapeonly   If true, normalise each variation to its CV integral (shape-only).
+             * @param shapeonly   Shape-only mode: every spline variation and every covariance
+             *                    source is projected onto per-channel SHAPE (each collapsed
+             *                    channel's normalisation removed) — see ShapeProjector /
+             *                    ShapeRescaleUniverse. Must match the metric's shape_only flag.
              * @param other_index Variable index for which to build systematics (-1 = primary).
              * @param model       Physics model (used when converting splines to covariance).
              * @param params      Physics parameter vector for CV spectrum evaluation.
@@ -171,6 +174,36 @@ namespace PROfit {
             /** @brief Return the number of covariance-matrix systematics in this PROsyst. */
             size_t GetNCovar() const { return n_covar; }
 
+            /** @brief True when built in shape-only mode (per-channel shape projection applied). */
+            bool ShapeOnly() const { return shape_only; }
+
+            /**
+             * @brief Contiguous UNcollapsed-bin block (start, length) of every collapsed channel.
+             * @details One entry per (mode, detector, channel) in collapsed-channel order; the block
+             * spans all of that channel's subchannels for binning index @p binning. This is the
+             * domain over which shape-only normalisation is defined: it matches the per-channel
+             * data/prediction rescale done by the metrics (ChannelNormFactors in PROtocall).
+             */
+            static std::vector<std::pair<size_t,size_t>> ChannelBlocks(const PROconfig &config, int binning);
+
+            /**
+             * @brief In place: rescale each channel block of @p var so its integral equals the CV's.
+             * @details f_a = sum_a(cv)/sum_a(var) per block a; a block with sum_a(var)==0 is left untouched.
+             * A shape-only variation built this way has zero net change per channel exactly.
+             */
+            static void ShapeRescaleUniverse(const std::vector<std::pair<size_t,size_t>> &blocks, const Eigen::VectorXf &cv, Eigen::VectorXf &var);
+
+            /**
+             * @brief Fractional-space shape projector R for a covariance in binning with nominal @p cv.
+             * @details R = I - B with B_ij = N_j / N_a for i, j in the same channel block a (N = cv,
+             * N_a = block sum), zero across blocks. For a fractional covariance F the shape-only
+             * matrix is F_shape = R F R^T, which equals the classic
+             * M_shape = M - M_mixed - M_norm on the absolute matrix diag(N) F diag(N), per channel.
+             * R annihilates a pure per-channel normalisation (F = s^2 1 1^T on a block) exactly and
+             * is idempotent on a covariance whose universes were already ShapeRescaleUniverse'd.
+             */
+            static Eigen::MatrixXf ShapeProjector(const std::vector<std::pair<size_t,size_t>> &blocks, const Eigen::VectorXf &cv);
+
             //----- Spline and Covariance matrix related ---
             //----- Spline and Covariance matrix related ---
 
@@ -180,7 +213,7 @@ namespace PROfit {
             /* Function: given a SystStruct with cv and variation spectra, build full covariance matrix for the systematics, and return it
              * Note: it assumes the SystStruct is filled 
              */
-            static Eigen::MatrixXf GenerateFullCovarMatrix(const SystStruct& sys_obj);
+            static Eigen::MatrixXf GenerateFullCovarMatrix(const SystStruct& sys_obj, const std::vector<std::pair<size_t,size_t>> *shape_blocks = nullptr);
 
             /* Function: Given a SystStruct, generate fractinal covariance matrix, and correlation matrix, and add matrices to covmat_map and corrtmat_map
              * Note: this function is lazy. It wouldn't do anything if it found covariance matrix with the same name already in the map.
@@ -208,12 +241,12 @@ namespace PROfit {
             /* Function: given a syst struct with cv and variation spectra, build fractional covariance matrix for the systematics, as well as correlation matrix 
              * Return: {fractional covariance matrix, correlation covariance matrix}
              */
-            static std::pair<Eigen::MatrixXf, Eigen::MatrixXf> GenerateCovarMatrices(const SystStruct& sys_obj);
+            static std::pair<Eigen::MatrixXf, Eigen::MatrixXf> GenerateCovarMatrices(const SystStruct& sys_obj, const std::vector<std::pair<size_t,size_t>> *shape_blocks = nullptr);
 
             /* Function: given a SystStruct with cv and variation spectra, build fractional covariance matrix for the systematics, and return it
              * Note: it assumes the SystStruct is filled 
              */
-            static Eigen::MatrixXf GenerateFracCovarMatrix(const SystStruct& sys_obj);
+            static Eigen::MatrixXf GenerateFracCovarMatrix(const SystStruct& sys_obj, const std::vector<std::pair<size_t,size_t>> *shape_blocks = nullptr);
 
             /* Given fractional covariance matrix, calculate the correlation matrix */
             static Eigen::MatrixXf GenerateCorrMatrix(const Eigen::MatrixXf& frac_matrix);
@@ -309,7 +342,12 @@ namespace PROfit {
             std::vector<Eigen::MatrixXf> covmat;     ///< Fractional covariance matrices, one per covariance systematic.
             std::vector<Eigen::MatrixXf> corrmat;    ///< Correlation matrices, one per covariance systematic.
             int other_index;                         ///< Variable index for which systematics were built.
-            static bool shape_only;                  ///< If true, variations are normalised to CV integral (shape-only mode).
+            bool shape_only = false;                 ///< Shape-only mode (per instance; copied by subset/excluding/allsplines2cov).
+            std::map<int, std::vector<std::pair<size_t,size_t>>> shape_blocks;  ///< binning index -> ChannelBlocks (built in the ctor when shape_only).
+            std::map<int, Eigen::VectorXf> shape_nominal;                        ///< binning index -> nominal spectrum defining the projector (ctor, shape_only).
+            /// Blocks / nominal spectrum for a SystStruct's binning (binning<0 means other_index).
+            const std::vector<std::pair<size_t,size_t>>& shapeBlocksFor(const SystStruct &syst) const { return shape_blocks.at(syst.binning < 0 ? other_index : syst.binning); }
+            const Eigen::VectorXf& shapeNominalFor(const SystStruct &syst) const { return shape_nominal.at(syst.binning < 0 ? other_index : syst.binning); }
             mutable Eigen::VectorXf last_decomp_spec; ///< Cached CV spectrum from last DecomposeFractionalCovariance call.
             mutable Eigen::MatrixXf last_decomp_mat;  ///< Cached Cholesky factor from last DecomposeFractionalCovariance call.
             mutable Eigen::VectorXf last_decomp_full_spec; ///< Cached CV spectrum from last DecomposeFractionalCovarianceFull call.

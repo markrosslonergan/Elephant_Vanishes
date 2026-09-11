@@ -16,6 +16,7 @@
 #include "PROmetrics/PROchi_pearson.h"
 #include "PROmetrics/PROchi_CNP.h"
 #include "PROmetrics/PROpoisson.h"
+#include "PROmetrics/PROmetricFactory.h"
 #include "PROcess.h"
 #include "PROsurf.h"
 #include "PROfc.h"

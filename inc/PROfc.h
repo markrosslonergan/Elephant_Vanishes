@@ -23,6 +23,7 @@
 #include "PROmetrics/PROchi_pearson.h"
 #include "PROmetrics/PROchi_CNP.h"
 #include "PROmetrics/PROpoisson.h"
+#include "PROmetrics/PROmetricFactory.h"
 
 #include <Eigen/Eigen>
 
@@ -63,6 +64,7 @@ namespace PROfit {
         const int thread;                ///< Thread index (used to differentiate seeds).
         const bool binned;               ///< If true, use binned spectrum-filling mode.
         const bool gof_mode;             ///< If true, run as a goodness-of-fit test (both fits free).
+        const bool shape_only;           ///< Build every pseudo-experiment metric in shape-only mode (must match the data fit; --shapeonly).
     };
 
     /**

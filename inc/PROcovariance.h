@@ -54,9 +54,9 @@ namespace PROfit{
              * @brief Per-bin statistical variance used to build M inside operator().
              * @param collapsed_prediction  Predicted spectrum, already collapsed to the
              *                              fitting variable's bin space.
-             * @param comparison            The spectrum the prediction is compared against:
-             *                              the observed data, or its area-normalised form in
-             *                              shape_only mode.
+             * @param comparison            The observed data spectrum (never rescaled; in
+             *                              shape_only mode it is the PREDICTION that is
+             *                              rescaled onto the data per channel before the call).
              * @param param                 Full parameter vector when available, so a metric
              *                              can derive its variance from something other than
              *                              the shifted prediction (PROCNP uses the
@@ -82,7 +82,7 @@ namespace PROfit{
              * PROCNP override it because their per-channel diagnostic path has historically
              * used a different convention from their fit path (see those overrides).
              * @param collapsed_cv  Predicted spectrum, already collapsed.
-             * @param comparison    Observed data, area-normalised in shape_only mode.
+             * @param comparison    Observed data (the collapsed_cv is already per-channel rescaled in shape_only mode).
              */
             virtual Eigen::VectorXf singleChannelStatVariances(
                 const Eigen::VectorXf &collapsed_cv, const Eigen::VectorXf &comparison) const;
@@ -101,9 +101,10 @@ namespace PROfit{
              * @brief Populate the constant-bin-selection cache from a fixed variance vector.
              * @details Opt-in, called from a concrete metric's constructor. Only valid when
              * that metric guarantees its variances (and therefore the set of bins with a
-             * positive variance) never change during the fit — PROchi outside shape_only mode
-             * is the only such case today. Metrics that do not call it rebuild the reduced
-             * statistical covariance on every operator() invocation.
+             * positive variance) never change during the fit — PROchi (Neyman: variance = the
+             * data, in every mode incl. shape_only) is the only such case today. Metrics that
+             * do not call it rebuild the reduced statistical covariance on every operator()
+             * invocation.
              */
             void buildConstantStatCache(const Eigen::VectorXf &variances);
 
@@ -112,8 +113,8 @@ namespace PROfit{
             const PROpeller &peller;  ///< MC event store (non-owning reference).
 
             // Cached non-empty-bin slicing, valid only when the selected bins AND their
-            // variances are both independent of the prediction (i.e. PROchi outside
-            // shape_only mode). Every other case rebuilds them per call.
+            // variances are both independent of the prediction (i.e. PROchi/Neyman).
+            // Every other case rebuilds them per call.
             std::vector<Eigen::Index> nec_indices;          ///< Indices of bins with positive variance; empty if cache invalid.
             Eigen::MatrixXf nec_reduced_stat_cov;           ///< Reduced statistical covariance for nec_indices.
             bool nec_valid = false;                         ///< True iff buildConstantStatCache() populated the cache above.

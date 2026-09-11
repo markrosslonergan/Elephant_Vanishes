@@ -1876,7 +1876,7 @@ int PROconfig::LoadFromXML(const std::string &filename){
 
     while(pShapeOnlyMap){
 
-        log<LOG_WARNING>(L"%1% || Warning!  Setting up for shape-only covariance matrix generation. MAKE SURE this is what you want if you're generating covariance matrix!!!") % __func__;
+        log<LOG_WARNING>(L"%1% || <ShapeOnlyUncertainty> is parsed but NOT used by any fit or covariance code: shape-only mode is the global --shapeonly flag (per-channel shape projection of every systematic). This block is ignored.") % __func__;
 
         const std::vector<std::string> expected_attrs = {"name", "use"};
         for (const tinyxml2::XMLAttribute* attr = pShapeOnlyMap->FirstAttribute(); attr; attr = attr->Next()) {
@@ -2209,7 +2209,11 @@ void PROconfig::CalcTotalBins(){
         for(size_t mode = 0; mode < m_num_modes; ++mode) {
             for(size_t det = 0; det < m_num_detectors; ++det) {
                 for(size_t channel = 0; channel < m_num_channels; ++channel) {
-                    std::vector<float> widths =  GetChannelVariableBins(global_channel_index, io).Widths();
+                    // One width per COLLAPSED bin. For a 2D channel that is nx*ny
+                    // entries of dx*dy in flat (x*ny+y) order, matching
+                    // TH2::Scale(1,"width"); Widths() alone would give only the nx
+                    // x-widths and leave every later channel misaligned.
+                    std::vector<float> widths =  GetChannelVariableBins(global_channel_index, io).BinWidths();
                     const std::vector<float>& edges = GetChannelVariableBins(global_channel_index, io).Edges();
 
                     for(size_t sc = 0; sc < m_num_subchannels[channel]; sc++){           
@@ -2229,6 +2233,11 @@ void PROconfig::CalcTotalBins(){
         // growing entries and per-variable lookups read the wrong edges.
         m_variable_bin_to_edges.push_back(tmpe);
         Eigen::VectorXf coll_bin_widths = Eigen::Map<Eigen::VectorXf>(tmp.data(),tmp.size());
+        if(coll_bin_widths.size() != (Eigen::Index)m_num_variable_bins_total_collapsed[io]) {
+            log<LOG_ERROR>(L"%1% || Variable %2%: built %3% collapsed bin widths but the collapsed spectrum has %4% bins.") % __func__ % io % coll_bin_widths.size() % m_num_variable_bins_total_collapsed[io];
+            log<LOG_ERROR>(L"Terminating.");
+            exit(EXIT_FAILURE);
+        }
         collapsed_bin_widths.push_back(coll_bin_widths);
         log<LOG_INFO>(L"%1% || On variable %2% bin widths are size %3% and  %4% ") % __func__ % io % coll_bin_widths.size() % coll_bin_widths;
 
@@ -3128,6 +3137,18 @@ int PROconfig::Binning::Bin(const std::vector<float> &v) const {
 std::vector<float> PROconfig::Binning::Widths(unsigned dim) const {
     std::vector<float> ret;
     for (int i = 0; i < (int)bin_edges[dim].size() - 1; i++) ret.push_back(bin_edges[dim][i+1] - bin_edges[dim][i]);
+    return ret;
+}
+
+// N-dimensional bin "volume" (product of the per-dimension widths) for every flat bin,
+// in the same flat order as ProjectIndex/ProjectSpectra (last dimension fastest).
+std::vector<float> PROconfig::Binning::BinWidths() const {
+    const size_t nb = NBins();
+    std::vector<std::vector<float>> per_dim;
+    for (unsigned d = 0; d < NDim(); ++d) per_dim.push_back(Widths(d));
+    std::vector<float> ret(nb, 1.0f);
+    for (size_t ind = 0; ind < nb; ++ind)
+        for (unsigned d = 0; d < NDim(); ++d) ret[ind] *= per_dim[d][ProjectIndex(ind, d)];
     return ret;
 }
 
